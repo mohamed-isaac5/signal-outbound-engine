@@ -19,6 +19,7 @@ anthropic = [
     "anthropic>=0.40",
 ]
 dev = [
+    "tomli>=2",  # mypy resolves the 3.10 fallback import on every Python version
     "pytest==8.3.4",
     "ruff==0.8.6",
     "mypy==1.14.1",
