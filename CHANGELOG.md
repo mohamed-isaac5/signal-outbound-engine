@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-11-13
+
+### Fixed
+- `soe draft --provider anthropic` no longer ends with the OFFLINE DEMO DRAFT
+  label - that label only prints for the offline provider whose drafts it
+  actually describes.
+- The "waiting in the approval queue" line now reports the real pending count
+  from the queue, not the number of drafts generated in this run.
+- A contact with an empty or whitespace-only name fails fast with a clear
+  ValueError instead of an IndexError mid-draft.
+- README demo output block synced to the real `soe enrich` output (providers
+  line and COST column) and pinned to the live output by a test.
+
 ## [1.1.0] - 2026-11-13
 
 ### Added

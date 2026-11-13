@@ -80,3 +80,102 @@ def test_draft_command_is_idempotent_with_db(capsys, demo_dir, tmp_path) -> None
     ]
     assert main(argv) == 0
     assert main(argv) == 0  # second run: no IntegrityError
+
+
+class _FakeMessages:
+    def create(self, **kwargs):  # type: ignore[no-untyped-def]
+        class _Resp:
+            content = [
+                type("B", (), {"type": "text", "text": "Subject: quick question\n\nBody."})()
+            ]
+
+        return _Resp()
+
+
+class _FakeAnthropicClient:
+    messages = _FakeMessages()
+
+
+def test_anthropic_summary_is_not_labeled_offline(capsys, demo_dir, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """The OFFLINE label must never appear on a real LLM provider's summary."""
+    import engine.cli as cli
+    from engine.llm import OFFLINE_LABEL, AnthropicProvider
+
+    monkeypatch.setattr(
+        cli, "AnthropicProvider", lambda: AnthropicProvider(client=_FakeAnthropicClient())
+    )
+    signals, contacts, providers = demo_dir
+    rc = cli.main(
+        [
+            "draft",
+            "--signals", str(signals),
+            "--contacts", str(contacts),
+            "--providers", str(providers),
+            "--provider", "anthropic",
+        ]
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    summary = [line for line in out.splitlines() if "draft(s) created" in line]
+    assert summary and "provider 'anthropic'" in summary[0]
+    assert OFFLINE_LABEL not in summary[0]
+
+
+def test_offline_summary_carries_the_offline_label(capsys, demo_dir) -> None:  # type: ignore[no-untyped-def]
+    from engine.llm import OFFLINE_LABEL
+
+    signals, contacts, providers = demo_dir
+    main(
+        [
+            "draft",
+            "--signals", str(signals),
+            "--contacts", str(contacts),
+            "--providers", str(providers),
+        ]
+    )
+    out = capsys.readouterr().out
+    summary = [line for line in out.splitlines() if "draft(s) created" in line]
+    assert summary and OFFLINE_LABEL in summary[0]
+
+
+def test_waiting_count_reflects_the_actual_queue(capsys, demo_dir, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """After one draft is decided, a re-run must report the real pending count."""
+    signals, contacts, providers = demo_dir
+    db = tmp_path / "q.db"
+    argv = [
+        "draft",
+        "--signals", str(signals),
+        "--contacts", str(contacts),
+        "--providers", str(providers),
+        "--db", str(db),
+    ]
+    assert main(argv) == 0
+    out = capsys.readouterr().out
+    assert "2 draft(s) waiting in the approval queue." in out
+    assert (
+        main(
+            [
+                "approve",
+                "--db", str(db),
+                "--id", "Northwind Traders:sara.adel@northwind-demo.example",
+                "--decision", "approved",
+                "--reviewer", "mohamed",
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+    assert main(argv) == 0  # re-run: decided draft kept, pending one updated
+    out = capsys.readouterr().out
+    assert "1 draft(s) waiting in the approval queue." in out
+
+
+def test_readme_demo_output_matches_real_enrich_run(capsys, demo_dir) -> None:  # type: ignore[no-untyped-def]
+    """Pin the README demo block to what `soe enrich` actually prints."""
+    _, contacts, providers = demo_dir
+    main(["enrich", "--contacts", str(contacts), "--providers", str(providers)])
+    out = capsys.readouterr().out
+    readme = (Path(__file__).resolve().parent.parent / "README.md").read_text()
+    for line in out.splitlines():
+        if line.strip():
+            assert line in readme, f"README demo output drifted from real output: {line!r}"

@@ -1,3 +1,5 @@
+import pytest
+
 from engine.enrich import Contact, EmailStatus, LookupHit, run_waterfall
 
 
@@ -42,6 +44,11 @@ def test_existing_email_is_kept_without_provider_calls() -> None:
     assert out.contact.email == "known@acme.com"
     assert provider.calls == 0
     assert out.cost_usd == 0.0
+
+
+def test_contact_requires_a_non_empty_name() -> None:
+    with pytest.raises(ValueError, match="name"):
+        Contact(name="   ", company="Acme")
 
 
 def test_attempts_record_billed_misses() -> None:

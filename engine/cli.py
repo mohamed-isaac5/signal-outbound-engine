@@ -149,10 +149,17 @@ def main(argv: list[str] | None = None) -> int:
                         f"to={d.contact.email} fit={d.fit.points} provider={d.provider}",
                     )
         print("=" * 72)
-        print(f"{made} draft(s) created with provider '{drafter.name}' - {OFFLINE_LABEL}")
-        if dconn is not None and made:
-            print(f"{made} draft(s) waiting in the approval queue.")
-            print(f"Review with: soe approve --db {args.db} --list")
+        # The offline label belongs to the offline provider only - an LLM
+        # provider's drafts must never be labeled as template output.
+        label = f" - {OFFLINE_LABEL}" if isinstance(drafter, OfflineProvider) else ""
+        print(f"{made} draft(s) created with provider '{drafter.name}'{label}")
+        if dconn is not None:
+            from engine.approve import pending
+
+            waiting = len(pending(dconn))
+            if waiting:
+                print(f"{waiting} draft(s) waiting in the approval queue.")
+                print(f"Review with: soe approve --db {args.db} --list")
         return 0
     if args.command == "approve":
         from engine.approve import Approval, Decision, decide, pending

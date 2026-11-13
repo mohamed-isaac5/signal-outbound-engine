@@ -39,11 +39,13 @@ identically no matter when you clone the repo.
 ## Demo output (from the labeled fixtures)
 
 ```
-CONTACT                         EMAIL                               STATUS    FOUND BY
-Sara Adel / Northwind Traders   sara.adel@northwind-demo.example    verified  apollo-demo
-Omar Fathy / Globex             omar.fathy@globex-demo.example      risky     apollo-demo
-Mona Samir / Acme Corp          mona.samir@acme-demo.example        verified  clay-demo
-Karim Nabil / Initech           (unknown)                           unknown   -
+providers=apollo-demo -> clay-demo
+
+CONTACT                         EMAIL                               STATUS    FOUND BY         COST
+Sara Adel / Northwind Traders   sara.adel@northwind-demo.example    verified  apollo-demo   $  0.06
+Omar Fathy / Globex             omar.fathy@globex-demo.example      risky     apollo-demo   $  0.06
+Mona Samir / Acme Corp          mona.samir@acme-demo.example        verified  clay-demo     $  0.18
+Karim Nabil / Initech           (unknown)                           unknown   -             $  0.18
 
 enriched 3/4 for $0.48 ($0.16 per found email)
 ```
@@ -90,7 +92,7 @@ adapter fails loudly, never silently falls back.
 ## Principles
 
 - **Deterministic core.** Scoring, waterfall order, queue rules: pure functions
-  with tests. CI runs ruff, mypy --strict and pytest (44 tests) on 3.11/3.12.
+  with tests. CI runs ruff, mypy --strict and pytest (49 tests) on 3.11/3.12.
 - **Honesty over coverage.** A field the providers cannot find stays `null`.
   The engine never invents data to fill a gap - see Karim above.
 - **Human gate.** Drafts wait in an approval queue. A named reviewer approves

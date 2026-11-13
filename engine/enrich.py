@@ -32,6 +32,10 @@ class Contact:
     linkedin_url: str | None = None
     email_status: EmailStatus = EmailStatus.UNKNOWN
 
+    def __post_init__(self) -> None:
+        if not self.name.strip():
+            raise ValueError("contact must have a non-empty name")
+
 
 @dataclass(frozen=True)
 class LookupHit:
