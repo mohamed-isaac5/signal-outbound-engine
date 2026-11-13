@@ -62,3 +62,23 @@ def test_unknown_draft_rejected(tmp_path) -> None:  # type: ignore[no-untyped-de
     conn = open_db(tmp_path / "q.db")
     with pytest.raises(ValueError, match="no draft"):
         decide(conn, Approval(draft_id="nope", decision=Decision.APPROVED, reviewer="mohamed"))
+
+
+def test_reenqueue_pending_updates_content_and_stays_idempotent(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    conn = open_db(tmp_path / "q.db")
+    assert enqueue(conn, "d1", make_draft()) == "enqueued"
+    refreshed = make_draft()
+    object.__setattr__(refreshed, "subject", "new subject")
+    assert enqueue(conn, "d1", refreshed) == "updated"
+    rows = pending(conn)
+    assert len(rows) == 1  # no duplicate, no IntegrityError
+    assert rows[0]["subject"] == "new subject"
+
+
+def test_reenqueue_decided_draft_keeps_decision(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    conn = open_db(tmp_path / "q.db")
+    enqueue(conn, "d1", make_draft())
+    decide(conn, Approval(draft_id="d1", decision=Decision.APPROVED, reviewer="mohamed"))
+    assert enqueue(conn, "d1", make_draft()) == "kept_decided"
+    row = conn.execute("SELECT status, reviewer FROM drafts WHERE id = 'd1'").fetchone()
+    assert row == ("approved", "mohamed")

@@ -1,8 +1,10 @@
 """Demo enrichment providers: labeled, offline, deterministic.
 
-Unit costs mirror published per-lookup pricing of the real tools they stand in
-for, so the cost-per-lead math in the demo is realistic. Data comes from a
-labeled demo fixture - fictional contacts, never real people.
+Unit costs are REPRESENTATIVE per-lookup numbers for demo math (the real
+tools sell subscriptions and credits, not fixed per-lookup prices). The cost
+ledger is the point: every lookup is billed so cost per lead is measured,
+not estimated. Data comes from a labeled demo fixture - fictional contacts,
+never real people.
 """
 
 from __future__ import annotations

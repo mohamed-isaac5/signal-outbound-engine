@@ -3,7 +3,9 @@
 Nothing sends from this engine without an explicit approve decision recorded
 against the draft in the queue. Drafts wait as pending; a named reviewer
 approves or rejects (rejections require a reason). Every decision is written
-to the audit log, so any future send traces back to who approved what, when.
+to the audit log IN THE SAME TRANSACTION as the state change, so the log can
+never disagree with the queue. Re-enqueueing a pending draft refreshes its
+content; a decided draft is never touched.
 """
 
 from __future__ import annotations
@@ -13,7 +15,6 @@ from dataclasses import dataclass
 from enum import Enum
 
 from engine.draft import Draft
-from engine.store import log_event
 
 
 class Decision(str, Enum):
@@ -57,32 +58,57 @@ def ensure_queue(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def enqueue(conn: sqlite3.Connection, draft_id: str, draft: Draft) -> None:
+def _audit_tx(conn: sqlite3.Connection, event: str, detail: str) -> None:
+    """Audit write inside the caller's transaction - never commits on its own."""
+    conn.execute("INSERT INTO audit (event, detail) VALUES (?, ?)", (event, detail))
+
+
+def enqueue(conn: sqlite3.Connection, draft_id: str, draft: Draft) -> str:
+    """Queue a draft. Returns 'enqueued', 'updated', or 'kept_decided'.
+
+    A pending draft with the same id gets its content refreshed (re-drafted);
+    a decided draft is left untouched, so an approval is never overwritten.
+    State change and audit row commit in ONE transaction.
+    """
     ensure_queue(conn)
-    conn.execute(
-        "INSERT INTO drafts (id, recipient, company, subject, body, fit_points, provider)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (
-            draft_id,
-            draft.contact.email or "(unknown)",
-            draft.contact.company,
-            draft.subject,
-            draft.body,
-            draft.fit.points,
-            draft.provider,
-        ),
-    )
+    row = conn.execute("SELECT status FROM drafts WHERE id = ?", (draft_id,)).fetchone()
+    if row is not None and row[0] != "pending":
+        return "kept_decided"
+    if row is None:
+        outcome = "enqueued"
+        conn.execute(
+            "INSERT INTO drafts (id, recipient, company, subject, body, fit_points, provider)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                draft_id,
+                draft.contact.email or "(unknown)",
+                draft.contact.company,
+                draft.subject,
+                draft.body,
+                draft.fit.points,
+                draft.provider,
+            ),
+        )
+    else:
+        outcome = "updated"
+        conn.execute(
+            "UPDATE drafts SET subject = ?, body = ?, fit_points = ?, provider = ? WHERE id = ?",
+            (draft.subject, draft.body, draft.fit.points, draft.provider, draft_id),
+        )
+    _audit_tx(conn, "draft_enqueued", f"id={draft_id} to={draft.contact.email} ({outcome})")
     conn.commit()
-    log_event(conn, "draft_enqueued", f"id={draft_id} to={draft.contact.email}")
+    return outcome
 
 
-def pending(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+def pending(conn: sqlite3.Connection) -> list[dict[str, object]]:
     ensure_queue(conn)
-    conn.row_factory = sqlite3.Row
-    return list(conn.execute("SELECT * FROM drafts WHERE status = 'pending' ORDER BY id"))
+    cur = conn.execute("SELECT * FROM drafts WHERE status = 'pending' ORDER BY id")
+    columns = [c[0] for c in cur.description]
+    return [dict(zip(columns, row, strict=True)) for row in cur.fetchall()]
 
 
 def decide(conn: sqlite3.Connection, approval: Approval) -> None:
+    """Record a decision and its audit row in ONE transaction."""
     ensure_queue(conn)
     row = conn.execute("SELECT status FROM drafts WHERE id = ?", (approval.draft_id,)).fetchone()
     if row is None:
@@ -94,10 +120,10 @@ def decide(conn: sqlite3.Connection, approval: Approval) -> None:
         " decided_at = datetime('now') WHERE id = ?",
         (approval.decision.value, approval.reviewer, approval.reason, approval.draft_id),
     )
-    conn.commit()
-    log_event(
+    _audit_tx(
         conn,
         "draft_decision",
         f"id={approval.draft_id} {approval.decision.value} by={approval.reviewer}"
         + (f" reason={approval.reason}" if approval.reason else ""),
     )
+    conn.commit()

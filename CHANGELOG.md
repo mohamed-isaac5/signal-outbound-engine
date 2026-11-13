@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-11-13
+
+### Added
+- Real Anthropic Messages API adapter behind the optional `anthropic` extra,
+  with an inspectable prompt builder (`engine.llm.build_prompt`) and
+  `--provider anthropic` on `soe draft`.
+- `python -m engine.demo_fixtures`: regenerates the demo dataset with
+  run-relative timestamps, so the quickstart never rots.
+
+### Fixed
+- `soe draft` re-runs are idempotent: re-enqueueing a pending draft refreshes
+  its content; a decided draft is never overwritten (no more IntegrityError).
+- Approval decisions and their audit rows now commit in one transaction.
+- Demo provider costs are documented as representative demo numbers, not
+  vendor pricing.
+- Pinned the published scoring table to the weights in a test; cleaned stale
+  docstrings and test typing; SPDX license field; tag v1.1.0.
+
 ## [1.0.0] - 2026-11-13
 
 ### Added

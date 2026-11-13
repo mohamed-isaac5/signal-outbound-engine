@@ -4,11 +4,11 @@ import pytest
 
 from engine.draft import Draft
 from engine.enrich import Contact
-from engine.icp import score_signals
+from engine.icp import FitScore, score_signals
 from engine.signals import Signal, SignalType
 
 
-def fit() -> object:
+def fit() -> FitScore:
     signal = Signal(
         company="Acme",
         type=SignalType.HIRING,
@@ -21,4 +21,4 @@ def fit() -> object:
 def test_draft_requires_subject_and_body() -> None:
     contact = Contact(name="A", company="Acme", email="a@acme.com")
     with pytest.raises(ValueError):
-        Draft(contact=contact, subject=" ", body="hello", fit=fit())  # type: ignore[arg-type]
+        Draft(contact=contact, subject=" ", body="hello", fit=fit())

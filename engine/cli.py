@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import argparse
-import json as _json
-import sqlite3
+import json
 from pathlib import Path
 
 from engine import __version__
 from engine.connectors import DemoFileSource
 from engine.enrich import Contact, run_waterfall
-from engine.llm import OFFLINE_LABEL, OfflineProvider
+from engine.llm import OFFLINE_LABEL, AnthropicProvider, OfflineProvider
 from engine.providers_demo import load_demo_providers
 from engine.runner import audit_run, render_table, run_scoring
 from engine.store import log_event, open_db
@@ -43,6 +42,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     draft.add_argument("--window", type=int, default=30, help="freshness window in days")
     draft.add_argument("--db", type=Path, default=None, help="audit database path")
+    draft.add_argument(
+        "--provider",
+        choices=["offline", "anthropic"],
+        default="offline",
+        help="drafting provider (default: offline, no key needed)",
+    )
     approve = sub.add_parser("approve", help="review the approval queue")
     approve.add_argument("--db", type=Path, required=True, help="queue/audit database path")
     approve.add_argument("--list", action="store_true", help="list pending drafts")
@@ -65,12 +70,12 @@ def main(argv: list[str] | None = None) -> int:
         result = run_scoring(DemoFileSource(args.source), window_days=args.window)
         print(render_table(result))
         if args.db is not None:
-            conn: sqlite3.Connection = open_db(args.db)
+            conn = open_db(args.db)
             audit_run(conn, result)
         return 0
     if args.command == "enrich":
         providers = load_demo_providers(args.providers)
-        rows = _json.loads(args.contacts.read_text())
+        rows = json.loads(args.contacts.read_text())
         print(f"providers={' -> '.join(pv.name for pv in providers)}")
         print()
         print(f"{'CONTACT':<32}{'EMAIL':<36}{'STATUS':<10}{'FOUND BY':<14}{'COST':>7}")
@@ -110,8 +115,10 @@ def main(argv: list[str] | None = None) -> int:
         run = run_scoring(DemoFileSource(args.signals), window_days=args.window)
         qualified = {f.company: f for f in run.scores if f.points >= DRAFT_THRESHOLD}
         providers = load_demo_providers(args.providers)
-        rows = _json.loads(args.contacts.read_text())
-        drafter = OfflineProvider()
+        rows = json.loads(args.contacts.read_text())
+        drafter = (
+            OfflineProvider() if args.provider == "offline" else AnthropicProvider()
+        )
         dconn = open_db(args.db) if args.db is not None else None
         made = 0
         for row in rows:
@@ -134,12 +141,13 @@ def main(argv: list[str] | None = None) -> int:
             if dconn is not None:
                 from engine.approve import enqueue
 
-                enqueue(dconn, f"{d.contact.company}:{d.contact.email}", d)
-                log_event(
-                    dconn,
-                    "draft_created",
-                    f"to={d.contact.email} fit={d.fit.points} provider={d.provider}",
-                )
+                outcome = enqueue(dconn, f"{d.contact.company}:{d.contact.email}", d)
+                if outcome != "kept_decided":
+                    log_event(
+                        dconn,
+                        "draft_created",
+                        f"to={d.contact.email} fit={d.fit.points} provider={d.provider}",
+                    )
         print("=" * 72)
         print(f"{made} draft(s) created with provider '{drafter.name}' - {OFFLINE_LABEL}")
         if dconn is not None and made:

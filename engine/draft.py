@@ -1,8 +1,8 @@
-"""LLM drafting (M3).
+"""The draft contract.
 
-Drafts are generated from scored signals and enriched contacts. The Anthropic
-client lands in M3; this module defines the draft contract. No draft ever
-sends without a human approval in the queue (see engine.approve).
+A Draft is generated from a scored fit and an enriched contact by a
+DraftingProvider (see engine.llm). No draft ever sends without a human
+approval in the queue (see engine.approve).
 """
 
 from __future__ import annotations

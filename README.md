@@ -23,6 +23,7 @@ signals ──> ICP score ──> enrichment waterfall ──> draft ──> app
 
 ```bash
 pip install -e .
+python -m engine.demo_fixtures   # refresh demo data (timestamps relative to now)
 soe score   --source data/demo_signals.json
 soe enrich  --contacts data/demo_contacts.json --providers data/demo_enrichment.json
 soe draft   --signals data/demo_signals.json --contacts data/demo_contacts.json \
@@ -31,7 +32,9 @@ soe approve --db run.db --list
 ```
 
 Everything runs offline against labeled demo fixtures (fictional companies and
-contacts). Live providers plug into the same protocols.
+contacts). Live providers plug into the same protocols. Demo timestamps are
+generated relative to when you run the generator, so the quickstart behaves
+identically no matter when you clone the repo.
 
 ## Demo output (from the labeled fixtures)
 
@@ -45,9 +48,10 @@ Karim Nabil / Initech           (unknown)                           unknown   -
 enriched 3/4 for $0.48 ($0.16 per found email)
 ```
 
-These numbers come from the demo run, not real sends. The cost math is real:
-every provider lookup is billed to the ledger, hit or miss, so cost per
-enriched lead is measured, not estimated.
+These numbers come from the demo run, not real sends. The per-lookup costs
+are representative demo numbers (the real tools sell subscriptions and
+credits); the cost ledger is the point - every provider lookup is billed to
+it, hit or miss, so cost per enriched lead is measured, not estimated.
 
 ## Scoring
 
@@ -70,14 +74,23 @@ and points that produced it.
 
 Drafting is provider-agnostic. The default provider is **offline and
 deterministic** - template drafts assembled from the real score reasons, no API
-key, no spend, every draft labeled `OFFLINE DEMO DRAFT`. An Anthropic adapter
-implements the same interface and activates the day `ANTHROPIC_API_KEY` is
-set; without a key it fails loudly, never silently falls back.
+key, no spend, every draft labeled `OFFLINE DEMO DRAFT`. A real Anthropic
+adapter (Messages API) implements the same interface:
+
+```bash
+pip install -e ".[anthropic]"
+export ANTHROPIC_API_KEY=...
+soe draft --signals data/demo_signals.json --contacts data/demo_contacts.json \
+          --providers data/demo_enrichment.json --provider anthropic
+```
+
+The exact prompt is inspectable (`engine.llm.build_prompt`). Without a key the
+adapter fails loudly, never silently falls back.
 
 ## Principles
 
 - **Deterministic core.** Scoring, waterfall order, queue rules: pure functions
-  with tests. CI runs ruff, mypy --strict and pytest (36 tests) on 3.11/3.12.
+  with tests. CI runs ruff, mypy --strict and pytest (44 tests) on 3.11/3.12.
 - **Honesty over coverage.** A field the providers cannot find stays `null`.
   The engine never invents data to fill a gap - see Karim above.
 - **Human gate.** Drafts wait in an approval queue. A named reviewer approves

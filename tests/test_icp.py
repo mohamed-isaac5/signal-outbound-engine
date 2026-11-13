@@ -17,8 +17,15 @@ def sig(company: str, stype: SignalType) -> Signal:
     )
 
 
-def test_weights_sum_to_published_formula() -> None:
-    assert sum(SIGNAL_WEIGHTS.values()) == 30 + 25 + 20 + 15 + 10
+def test_weights_match_the_published_readme_table() -> None:
+    # Every (signal, points) pair published in README.md#scoring, pinned:
+    assert SIGNAL_WEIGHTS == {
+        SignalType.HIRING: 30,
+        SignalType.FUNDING: 25,
+        SignalType.TECH_CHANGE: 20,
+        SignalType.INTENT: 15,
+        SignalType.LEADERSHIP_CHANGE: 10,
+    }
 
 
 def test_score_accumulates_points_with_reasons() -> None:
