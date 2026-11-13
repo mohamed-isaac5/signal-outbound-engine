@@ -43,7 +43,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     draft.add_argument("--window", type=int, default=30, help="freshness window in days")
     draft.add_argument("--db", type=Path, default=None, help="audit database path")
-    sub.add_parser("approve", help="review the approval queue (M4)")
+    approve = sub.add_parser("approve", help="review the approval queue")
+    approve.add_argument("--db", type=Path, required=True, help="queue/audit database path")
+    approve.add_argument("--list", action="store_true", help="list pending drafts")
+    approve.add_argument("--id", dest="draft_id", default=None, help="draft id to decide")
+    approve.add_argument(
+        "--decision", choices=["approved", "rejected"], default=None, help="the decision"
+    )
+    approve.add_argument("--reviewer", default=None, help="who is deciding (required)")
+    approve.add_argument("--reason", default=None, help="required when rejecting")
     return parser
 
 
@@ -124,6 +132,9 @@ def main(argv: list[str] | None = None) -> int:
             print()
             print(d.body)
             if dconn is not None:
+                from engine.approve import enqueue
+
+                enqueue(dconn, f"{d.contact.company}:{d.contact.email}", d)
                 log_event(
                     dconn,
                     "draft_created",
@@ -131,6 +142,35 @@ def main(argv: list[str] | None = None) -> int:
                 )
         print("=" * 72)
         print(f"{made} draft(s) created with provider '{drafter.name}' - {OFFLINE_LABEL}")
+        if dconn is not None and made:
+            print(f"{made} draft(s) waiting in the approval queue.")
+            print(f"Review with: soe approve --db {args.db} --list")
+        return 0
+    if args.command == "approve":
+        from engine.approve import Approval, Decision, decide, pending
+
+        aconn = open_db(args.db)
+        if args.list:
+            rows = pending(aconn)
+            if not rows:
+                print("approval queue is empty")
+            for r in rows:
+                print(f"{r['id']}  -> {r['recipient']}  ({r['company']}, fit {r['fit_points']})")
+                print(f"    {r['subject']}")
+            return 0
+        if not (args.draft_id and args.decision and args.reviewer):
+            print("approve needs --id, --decision and --reviewer (see --help)")
+            return 2
+        decide(
+            aconn,
+            Approval(
+                draft_id=args.draft_id,
+                decision=Decision(args.decision),
+                reviewer=args.reviewer,
+                reason=args.reason,
+            ),
+        )
+        print(f"{args.draft_id}: {args.decision} by {args.reviewer} - audit-logged")
         return 0
     if args.command is None:
         parser.print_help()

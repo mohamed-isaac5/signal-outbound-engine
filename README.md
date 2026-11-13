@@ -46,7 +46,9 @@ Demo numbers in this README come from the labeled demo fixtures, not real sends.
 pip install -e .
 soe score --source data/demo_signals.json
 soe enrich --contacts data/demo_contacts.json --providers data/demo_enrichment.json
-soe draft --signals data/demo_signals.json --contacts data/demo_contacts.json --providers data/demo_enrichment.json
+soe draft --signals data/demo_signals.json --contacts data/demo_contacts.json --providers data/demo_enrichment.json --db run.db
+soe approve --db run.db --list
+soe approve --db run.db --id 'Northwind Traders:sara.adel@northwind-demo.example' --decision approved --reviewer mohamed
 ```
 
 The fixture is labeled demo data (fictional companies); live connectors plug
@@ -58,7 +60,7 @@ into the same `SignalSource` protocol.
 - [x] M1 - signal connectors + scoring runs
 - [x] M2 - enrichment waterfall (demo providers live; real providers plug into the same protocol)
 - [x] M3 - drafting (offline provider default; Anthropic adapter ready for a key)
-- [ ] M4 - approval queue + audit trail UI
+- [x] M4 - approval queue + audit trail
 - [ ] M5 - case-study README + public release
 
 ## License

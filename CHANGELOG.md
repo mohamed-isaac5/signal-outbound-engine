@@ -4,6 +4,13 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-11-13
+
+### Added
+- M4: approval queue. Drafts land as pending in SQLite; a named reviewer
+  approves or rejects (rejections require a reason, double decisions are
+  refused), and every enqueue and decision hits the audit log.
+
 ## [0.4.0] - 2026-11-13
 
 ### Added
