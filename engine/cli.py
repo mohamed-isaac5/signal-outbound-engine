@@ -124,12 +124,20 @@ def main(argv: list[str] | None = None) -> int:
         for row in rows:
             fit = qualified.get(row["company"])
             if fit is None:
+                print(
+                    f"skipped {row['name']} ({row['company']}): "
+                    f"no qualified fit (below {DRAFT_THRESHOLD} points or no fresh signals)"
+                )
                 continue
             contact = Contact(
                 name=row["name"], company=row["company"], title=row.get("title")
             )
             eresult = run_waterfall(contact, providers)
             if eresult.contact.email is None:
+                print(
+                    f"skipped {contact.name} ({contact.company}): "
+                    "no email found by any provider - unknown stays unknown"
+                )
                 continue
             d = drafter.draft(eresult.contact, fit)
             made += 1

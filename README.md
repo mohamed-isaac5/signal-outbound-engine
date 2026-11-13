@@ -92,7 +92,7 @@ adapter fails loudly, never silently falls back.
 ## Principles
 
 - **Deterministic core.** Scoring, waterfall order, queue rules: pure functions
-  with tests. CI runs ruff, mypy --strict and pytest (49 tests) on 3.11/3.12.
+  with tests. CI runs ruff, mypy --strict and pytest (53 tests) on 3.11/3.12.
 - **Honesty over coverage.** A field the providers cannot find stays `null`.
   The engine never invents data to fill a gap - see Karim above.
 - **Human gate.** Drafts wait in an approval queue. A named reviewer approves

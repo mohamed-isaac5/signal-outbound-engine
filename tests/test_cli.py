@@ -64,8 +64,13 @@ def test_draft_command_runs_end_to_end(capsys, demo_dir) -> None:  # type: ignor
     out = capsys.readouterr().out
     assert "OFFLINE DEMO DRAFT" in out
     assert "sara.adel@northwind-demo.example" in out
-    # Karim (Initech) is below threshold AND unknown email - never drafted
-    assert "Initech" not in out
+    # Karim (Initech) is below threshold: skipped with a reason, never drafted
+    assert "skipped Karim Nabil (Initech)" in out
+    assert not any(
+        line.startswith("TO:") and "initech" in line.lower() for line in out.splitlines()
+    )
+    # every skip is explained - nothing is silently dropped
+    assert "skipped Mona Samir (Acme Corp)" in out
 
 
 def test_draft_command_is_idempotent_with_db(capsys, demo_dir, tmp_path) -> None:  # type: ignore[no-untyped-def]
@@ -168,6 +173,32 @@ def test_waiting_count_reflects_the_actual_queue(capsys, demo_dir, tmp_path) -> 
     assert main(argv) == 0  # re-run: decided draft kept, pending one updated
     out = capsys.readouterr().out
     assert "1 draft(s) waiting in the approval queue." in out
+
+
+def test_skipped_contact_without_email_reports_reason(capsys, demo_dir) -> None:  # type: ignore[no-untyped-def]
+    """A qualified contact with no found email is skipped with a reason, not silently."""
+    import json
+
+    signals, contacts, providers = demo_dir
+    rows = json.loads(contacts.read_text())
+    # Northwind qualifies (55) - give Sara no provider data so no email is found
+    contacts.write_text(json.dumps([r for r in rows if r["company"] == "Northwind Traders"]))
+    empty_providers = providers.with_name("empty_providers.json")
+    empty_providers.write_text(
+        json.dumps({"providers": [{"name": "p", "unit_cost_usd": 0.01, "data": {}}]})
+    )
+    rc = main(
+        [
+            "draft",
+            "--signals", str(signals),
+            "--contacts", str(contacts),
+            "--providers", str(empty_providers),
+        ]
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "skipped Sara Adel (Northwind Traders): no email found" in out
+    assert "0 draft(s) created" in out
 
 
 def test_readme_demo_output_matches_real_enrich_run(capsys, demo_dir) -> None:  # type: ignore[no-untyped-def]

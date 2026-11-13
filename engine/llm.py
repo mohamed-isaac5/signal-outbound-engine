@@ -24,7 +24,7 @@ PROMPT_TEMPLATE = """Write a short B2B cold email.
 
 Recipient: {name} ({title}) at {company}
 Why now (scored buying signals): {reasons}
-Fit score: {points}/100
+Fit score: {points} points (uncapped - more fresh signals, more points)
 
 Rules: 3 short paragraphs max, plain text, reference ONE specific signal,
 no hype, no emojis, end with one low-friction question.

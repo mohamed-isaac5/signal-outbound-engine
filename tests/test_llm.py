@@ -108,3 +108,24 @@ def test_build_prompt_contains_real_reasons() -> None:
     assert "Sara Adel" in prompt
     assert "VP Sales" in prompt
     assert "+25 funding" in prompt
+
+
+def test_prompt_never_claims_a_score_cap() -> None:
+    """Fit is uncapped - the prompt must not imply a /100 ceiling."""
+    from datetime import timedelta
+
+    now = datetime.now(tz=timezone.utc)
+    signals = [
+        Signal(company="HotCo", type=t, observed_at=now, source="demo") for t in SignalType
+    ]
+    signals.append(
+        Signal(
+            company="HotCo", type=SignalType.HIRING,
+            observed_at=now - timedelta(days=1), source="demo",
+        )
+    )
+    fit = score_signals("HotCo", signals)
+    assert fit.points > 100  # the scenario this test guards
+    prompt = build_prompt(Contact(name="Sara", company="HotCo", email="s@x.y"), fit)
+    assert str(fit.points) in prompt
+    assert "/100" not in prompt

@@ -17,6 +17,11 @@ from engine.enrich import Contact, EmailStatus, LookupHit
 
 class DemoProvider:
     def __init__(self, name: str, unit_cost_usd: float, data: dict[str, dict[str, str]]) -> None:
+        if unit_cost_usd < 0:
+            raise ValueError(
+                f"provider {name!r} has a negative unit cost - "
+                "costs are billed, not rebated"
+            )
         self.name = name
         self.unit_cost_usd = unit_cost_usd
         self._data = data
