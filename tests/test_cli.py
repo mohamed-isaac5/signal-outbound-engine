@@ -320,10 +320,12 @@ def test_demo_runs_the_whole_chain(capsys, demo_dir, tmp_path) -> None:  # type:
     )
 
 
-def test_demo_missing_fixtures_fails_cleanly(capsys, tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_demo_missing_fixtures_generates_them(capsys, tmp_path) -> None:  # type: ignore[no-untyped-def]
     rc = main(["demo", "--data-dir", str(tmp_path), "--db", str(tmp_path / "d.db")])
-    assert rc == 2
-    assert "demo_fixtures" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "No demo data found - generating fresh demo data" in out
+    assert (tmp_path / "demo_signals.json").exists()
 
 
 def test_audit_empty_log(capsys, tmp_path) -> None:  # type: ignore[no-untyped-def]
@@ -365,7 +367,7 @@ def test_audit_traces_one_draft(capsys, demo_dir, tmp_path) -> None:  # type: ig
     out = capsys.readouterr().out
     assert "status=rejected by=mohamed" in out
     assert "reason=risky email" in out
-    assert "draft_enqueued" in out and "draft_decision" in out
+    assert "draft queued" in out and "decision" in out  # friendly labels
     # the other draft's trail must not leak into this trace
     assert "Northwind" not in out
 
@@ -423,7 +425,7 @@ def test_audit_lists_events(capsys, tmp_path) -> None:  # type: ignore[no-untype
     log_event(conn, "scoring_run", "source=demo window=30d: Acme=55")
     assert main(["audit", "--db", str(db)]) == 0
     out = capsys.readouterr().out
-    assert "scoring_run" in out and "Acme=55" in out
+    assert "scored" in out and "Acme=55" in out  # friendly label, raw detail
 
 
 def test_audit_approved_without_reason_has_no_reason_line(capsys, demo_dir, tmp_path) -> None:  # type: ignore[no-untyped-def]

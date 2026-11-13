@@ -62,6 +62,7 @@ def test_export_marks_exported_and_all_flag_recovers(tmp_path: Path) -> None:
     approve(conn, "d1")
     assert export_approved(conn, tmp_path / "a.csv") == 1
     assert export_approved(conn, tmp_path / "b.csv") == 0  # nothing new
+    assert not (tmp_path / "b.csv").exists()  # and no empty file left behind
     assert export_approved(conn, tmp_path / "c.csv", include_exported=True) == 1
     # the export itself is audit-logged
     events = [r[0] for r in conn.execute("SELECT event FROM audit").fetchall()]

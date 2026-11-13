@@ -11,6 +11,7 @@ content; a decided draft is never touched.
 from __future__ import annotations
 
 import contextlib
+import json
 import sqlite3
 from dataclasses import dataclass
 from enum import Enum
@@ -51,7 +52,8 @@ CREATE TABLE IF NOT EXISTS drafts (
     reviewer TEXT,
     reason TEXT,
     decided_at TEXT,
-    exported_at TEXT
+    exported_at TEXT,
+    reasons TEXT
 );
 """
 
@@ -60,6 +62,7 @@ CREATE TABLE IF NOT EXISTS drafts (
 _MIGRATIONS = (
     "ALTER TABLE drafts ADD COLUMN recipient_name TEXT",
     "ALTER TABLE drafts ADD COLUMN exported_at TEXT",
+    "ALTER TABLE drafts ADD COLUMN reasons TEXT",
 )
 
 
@@ -91,8 +94,9 @@ def enqueue(conn: sqlite3.Connection, draft_id: str, draft: Draft) -> str:
         outcome = "enqueued"
         conn.execute(
             "INSERT INTO drafts"
-            " (id, recipient, recipient_name, company, subject, body, fit_points, provider)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            " (id, recipient, recipient_name, company, subject, body, fit_points, provider,"
+            " reasons)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 draft_id,
                 draft.contact.email or "(unknown)",
@@ -102,15 +106,16 @@ def enqueue(conn: sqlite3.Connection, draft_id: str, draft: Draft) -> str:
                 draft.body,
                 draft.fit.points,
                 draft.provider,
+                json.dumps(list(draft.fit.reasons)),
             ),
         )
     else:
         outcome = "updated"
         conn.execute(
             "UPDATE drafts SET recipient_name = ?, subject = ?, body = ?, fit_points = ?,"
-            " provider = ? WHERE id = ?",
+            " provider = ?, reasons = ? WHERE id = ?",
             (draft.contact.name, draft.subject, draft.body, draft.fit.points, draft.provider,
-             draft_id),
+             json.dumps(list(draft.fit.reasons)), draft_id),
         )
     _audit_tx(conn, "draft_enqueued", f"id={draft_id} to={draft.contact.email} ({outcome})")
     conn.commit()

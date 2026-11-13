@@ -38,10 +38,11 @@ def test_offline_draft_cites_real_reasons_and_is_labeled() -> None:
     d = OfflineProvider().draft(contact, fit)
     assert d.provider == "offline-template"
     assert OFFLINE_LABEL in d.body
-    assert "+30 hiring" in d.body
-    assert "+25 funding" in d.body
+    assert "you're hiring for key roles" in d.body
+    assert "you just raised a new round" in d.body
     assert "Sara" in d.body
-    assert str(d.fit.points) in d.subject
+    assert "+30 hiring" not in d.body  # point math stays out of the email
+    assert "pts" not in d.subject
 
 
 def test_offline_draft_is_deterministic() -> None:

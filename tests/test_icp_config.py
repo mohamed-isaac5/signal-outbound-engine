@@ -269,9 +269,9 @@ def test_write_then_load_round_trip(tmp_path: Path) -> None:
 
 def test_resolve_precedence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
-    # nothing anywhere: no ICP, with the setup hint
+    # no local file: the packaged example is the always-present fallback
     icp, note = resolve_icp(None)
-    assert icp is None and "soe icp setup" in note
+    assert icp is not None and icp.name.startswith("Example:") and "example" in note
     # ./icp.toml wins over the shipped example
     write(tmp_path, FULL_TOML)
     icp, note = resolve_icp(None)
@@ -321,6 +321,9 @@ def test_icp_show_without_any_icp(
     capsys: pytest.CaptureFixture[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.chdir(tmp_path)
+    from engine import icp_config
+
+    monkeypatch.setattr(icp_config, "PACKAGE_EXAMPLE", tmp_path / "missing.toml")
     assert main(["icp", "show"]) == 0
     assert "No ICP yet" in capsys.readouterr().out
 
@@ -354,6 +357,7 @@ def test_icp_setup_writes_file(
             "20",  # tech_change
             "15",  # intent
             "5",  # leadership_change
+            "",  # recap: save
         ],
     )
     assert main(["icp", "setup"]) == 0
@@ -371,7 +375,7 @@ def test_icp_setup_defaults_on_enter(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    feed(monkeypatch, ["", "", "", "", "", "", "", ""])
+    feed(monkeypatch, ["", "", "", "", "", "", "", "", ""])
     assert main(["icp", "setup"]) == 0
     icp = load_icp(tmp_path / "icp.toml")
     assert icp.industries  # defaults kept (from example or fallback)
@@ -394,7 +398,9 @@ def test_icp_setup_non_interactive(
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("builtins.input", lambda prompt="": (_ for _ in ()).throw(EOFError()))
     assert main(["icp", "setup"]) == 2
-    assert "No interactive terminal" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "need a real terminal" in out
+    assert "soe icp setup" in out  # the friendly re-run hint
     assert not (tmp_path / "icp.toml").exists()
 
 
@@ -460,9 +466,12 @@ def test_run_without_icp_says_so(
     capsys: pytest.CaptureFixture[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.chdir(tmp_path)
+    from engine import icp_config
+
+    monkeypatch.setattr(icp_config, "PACKAGE_EXAMPLE", tmp_path / "missing.toml")
     assert main(["run", "--db", str(tmp_path / "r.db")]) == 0
     out = capsys.readouterr().out
-    assert "no icp.toml found" in out
+    assert "who you sell to is not set up yet" in out
     assert "over the 50-point bar" in out  # pre-ICP wording
 
 
@@ -516,7 +525,7 @@ def test_ask_int_reprompts_until_valid(
     monkeypatch.chdir(tmp_path)
     feed(
         monkeypatch,
-        ["x", "saas", "abc", "-3", "20", "300", "EG", "vp sales", "none", "n"],
+        ["x", "saas", "abc", "-3", "20", "300", "EG", "vp sales", "none", "n", ""],
     )
     assert main(["icp", "setup"]) == 0
     out = capsys.readouterr().out
@@ -581,12 +590,15 @@ def test_demo_bad_icp_flag_fails_cleanly(
 def test_demo_without_icp_keeps_pre_icp_wording(
     capsys: pytest.CaptureFixture[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.chdir(tmp_path)  # no icp.toml and no data/icp.example.toml here
+    monkeypatch.chdir(tmp_path)  # no icp.toml here
+    from engine import icp_config
+
+    monkeypatch.setattr(icp_config, "PACKAGE_EXAMPLE", tmp_path / "missing.toml")
     data_dir = _demo_data(tmp_path)
     rc = main(["demo", "--data-dir", str(data_dir), "--db", str(tmp_path / "d.db")])
     assert rc == 0
     out = capsys.readouterr().out
-    assert "no icp.toml found" in out
+    assert "who you sell to is not set up yet" in out
     assert "over the 50-point bar route to drafting" in out
     assert "below the fit bar" in out
 

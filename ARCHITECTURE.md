@@ -125,3 +125,24 @@ Mitigation: every exclusion is printed with its reason in every score table,
 and `soe icp show` always shows what is active. Company metadata is a fixture
 like the rest of the demo data; live CRM attributes plug into the same
 `CompanyProfile` shape.
+
+## ADR-0007: Point math is for reports; emails speak human
+
+**Decision.** Score reasons keep their exact point form (`+30 hiring
+(demo-file)`) in the score table, the audit trail, and the review queue's
+`w` breakdown. Anything addressed to a buyer - subject and body of a draft,
+and therefore the exported CSV - renders the same signals through a published
+phrase map (`engine.llm.SIGNAL_PHRASES`) and never contains points, weights,
+or source names. ICP boost reasons never appear in buyer-facing text at all:
+they describe our fit, not the buyer's movement.
+
+**Why.** The exported CSV is the artifact a reviewer of this portfolio opens,
+and the artifact a real user uploads to a sequencer. An email containing
+"+30 hiring (demo-file)" fails both audiences at the exact moment the system
+is supposed to look finished. Keeping both renderings from the same stored
+reasons preserves explainability without leaking internals.
+
+**Cost.** Two renderings of one fact can drift. Mitigation: the phrase map is
+a single pinned table (every signal type must have a phrase, enforced by
+test), the unknown-kind fallback is itself tested, and the audit trail always
+keeps the raw form for debugging.

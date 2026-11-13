@@ -50,6 +50,8 @@ def export_approved(
         "SELECT id, recipient, recipient_name, company, subject, body"
         f" FROM drafts WHERE {where} ORDER BY id"
     ).fetchall()
+    if not rows:
+        return 0  # nothing to export: no file, no audit event
     with out_path.open("w", newline="") as fh:
         writer = csv.writer(fh)
         writer.writerow(CSV_COLUMNS)

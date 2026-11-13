@@ -37,7 +37,7 @@ pip install -e ".[dev]"        # engine + test/lint tooling
 **Verify the install** (about a second):
 
 ```bash
-pytest -q     # 163 tests, all offline
+pytest -q     # 183 tests, all offline
 soe demo      # the whole chain, narrated, on labeled demo data
 ```
 
@@ -113,6 +113,9 @@ identically no matter when you clone the repo.
 ## Demo output (from the labeled fixtures)
 
 ```
+Enrichment: find each contact's email through the provider waterfall.
+Every lookup is billed; a contact nobody finds stays 'unknown'.
+
 providers=apollo-demo -> clay-demo
 
 CONTACT                         EMAIL                               STATUS    FOUND BY         COST
@@ -171,14 +174,16 @@ two ways, both printed in the score breakdown:
   +10 industry match, +5 size in range, +5 country match.
 
 No `icp.toml` yet? A fresh clone runs against the shipped example
-(`data/icp.example.toml`, mid-market B2B SaaS) and says so, so the demo works
+(mid-market B2B SaaS, shipped inside the package) and says so, so the demo works
 immediately and the ICP is one `soe icp setup` away.
 
 ## Drafting: honest by default
 
 Drafting is provider-agnostic. The default provider is **offline and
 deterministic** - template drafts assembled from the real score reasons, no API
-key, no spend, every draft labeled `OFFLINE DEMO DRAFT`. A real Anthropic
+key, no spend, every draft labeled `OFFLINE DEMO DRAFT`. Drafts cite the
+signals in buyer language ("you're hiring for key roles"), never point math -
+the point breakdown stays in the score table and the audit trail. A real Anthropic
 adapter (Messages API) implements the same interface:
 
 ```bash
@@ -190,6 +195,13 @@ soe draft --signals data/demo_signals.json --contacts data/demo_contacts.json \
 
 The exact prompt is inspectable (`engine.llm.build_prompt`). Without a key the
 adapter fails loudly, never silently falls back.
+
+## The audit trail speaks plainly
+
+`soe audit` shows every event in your local timezone with human labels
+("scored", "draft queued", "decision"); the raw event names stay in the
+database. During review, answer `w` on any draft to see its point-by-point
+score breakdown before deciding.
 
 ## After approval: export and trace
 
@@ -215,7 +227,7 @@ recorded as ADRs in [ARCHITECTURE.md](ARCHITECTURE.md).
 ## Principles
 
 - **Deterministic core.** Scoring, waterfall order, queue rules: pure functions
-  with tests. CI runs ruff, mypy --strict and pytest (163 tests) on 3.11/3.12.
+  with tests. CI runs ruff, mypy --strict and pytest (183 tests) on 3.11/3.12.
 - **Honesty over coverage.** A field the providers cannot find stays `null`.
   The engine never invents data to fill a gap - see Karim above.
 - **Human gate.** Drafts wait in an approval queue. A named reviewer approves

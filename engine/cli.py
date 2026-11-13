@@ -39,7 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     run_cmd = sub.add_parser(
         "run",
-        help="the whole pipeline in one shot (best first command)",
+        help="DO the work: the whole pipeline in one shot (best first command)",
         epilog=(
             "examples:\n"
             "  soe run                     everything, on the demo data\n"
@@ -58,7 +58,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     guide = sub.add_parser(
         "guide",
-        help="guided walkthrough: explains every step, you approve each draft",
+        help="LEARN it: guided walkthrough, you approve each draft",
         epilog=(
             "examples:\n"
             "  soe guide                   interactive: pauses, you review each draft\n"
@@ -174,7 +174,10 @@ def build_parser() -> argparse.ArgumentParser:
     audit.add_argument(
         "--id", dest="draft_id", default=None, help="trace one draft id (default: all events)"
     )
-    demo = sub.add_parser("demo", help="run the whole chain offline and narrate each step")
+    demo = sub.add_parser(
+        "demo",
+        help="WATCH it: the whole chain offline, narrated like a presentation",
+    )
     demo.add_argument(
         "--data-dir", type=Path, default=Path("data"), help="directory with demo_*.json fixtures"
     )
@@ -255,14 +258,39 @@ def _icp_and_companies(
     return (icp, load_companies(companies_path))
 
 
+# Audit display: raw event names stay in the database; people read labels.
+EVENT_LABELS = {
+    "scoring_run": "scored",
+    "enrichment": "enriched",
+    "draft_created": "draft written",
+    "draft_enqueued": "draft queued",
+    "draft_decision": "decision",
+    "export": "exported",
+}
+
+
+def _local_time(utc_text: str) -> str:
+    """Audit timestamps are stored in UTC; people read their own clock."""
+    from datetime import datetime, timezone
+
+    try:
+        moment = datetime.strptime(utc_text, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return utc_text
+    return moment.astimezone().strftime("%Y-%m-%d %H:%M %Z")
+
+
+def _event_label(event: str) -> str:
+    return EVENT_LABELS.get(event, event)
+
+
 def _missing_inputs(paths: list[Path]) -> int:
     """Friendly error when the demo inputs are not on disk yet."""
     for path in paths:
         print(f"missing {path}")
     print()
-    print("The demo data files are not here yet. Either:")
-    print("  soe run        (generates demo data and runs everything)")
-    print("  python -m engine.demo_fixtures   (just generate the data)")
+    print("The demo data files are not here yet. Easiest fix:")
+    print("  soe run   (generates the demo data and runs everything)")
     return 2
 
 
@@ -274,8 +302,9 @@ def _welcome() -> None:
     print("Usage: soe <command>")
     print()
     print("New here? Pick one:")
-    print("  soe run      the whole pipeline, start to finish, with a summary")
-    print("  soe guide    the same, but explains every step and walks you through")
+    print("  soe run      DO the work: the whole pipeline, start to finish")
+    print("  soe guide    LEARN it: same flow, explains every step")
+    print("  soe demo     WATCH it: the whole chain narrated like a presentation")
     print()
     print("Then:")
     print("  soe approve  read each drafted email, approve or reject it")
@@ -284,6 +313,17 @@ def _welcome() -> None:
     print()
     print("Every command works with zero flags on the demo data.")
     print("All commands and options: soe --help")
+    try:
+        from engine.approve import pending
+        from engine.onboard import DB
+
+        if DB.exists():
+            waiting = len(pending(open_db(DB)))
+            if waiting:
+                print()
+                print(f"Right now: {waiting} draft(s) waiting for your review - soe approve")
+    except Exception:  # the welcome screen must never fail on an unreadable db
+        pass
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -324,6 +364,9 @@ def main(argv: list[str] | None = None) -> int:
         ctx = _icp_and_companies(args.icp, COMPANIES)
         if ctx is None:
             return 2
+        print("Scoring: points for fresh buying signals, filtered and boosted by")
+        print("your customer profile. 50+ points routes a company to drafting.")
+        print()
         result = run_scoring(
             DemoFileSource(args.source), window_days=args.window, icp=ctx[0], companies=ctx[1]
         )
@@ -337,6 +380,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "enrich":
         if not args.contacts.exists() or not args.providers.exists():
             return _missing_inputs([args.contacts, args.providers])
+        print("Enrichment: find each contact's email through the provider waterfall.")
+        print("Every lookup is billed; a contact nobody finds stays 'unknown'.")
+        print()
         providers = load_demo_providers(args.providers)
         rows = json.loads(args.contacts.read_text())
         print(f"providers={' -> '.join(pv.name for pv in providers)}")
@@ -386,6 +432,9 @@ def main(argv: list[str] | None = None) -> int:
         if ctx is None:
             return 2
         icp, companies = ctx
+        print("Drafting: one email per qualified, reachable contact.")
+        print("Each draft waits for YOUR approval - nothing sends itself.")
+        print()
         run = run_scoring(
             DemoFileSource(args.signals), window_days=args.window, icp=icp, companies=companies
         )
@@ -528,7 +577,7 @@ def main(argv: list[str] | None = None) -> int:
             if not rows:
                 print("audit log is empty")
             for created_at, event, detail in rows:
-                print(f"{created_at}  {event:<16} {detail}")
+                print(f"{_local_time(created_at)}  {_event_label(event):<16} {detail}")
             return 0
         from engine.approve import ensure_queue
 
@@ -558,7 +607,7 @@ def main(argv: list[str] | None = None) -> int:
         ).fetchall()
         print("  trail:")
         for created_at, event, detail in events:
-            print(f"    {created_at}  {event}: {detail}")
+            print(f"    {_local_time(created_at)}  {_event_label(event)}: {detail}")
         return 0
     if args.command == "icp":
         from engine.icp_config import ICP_FILE, ICPError, render_icp, resolve_icp
@@ -575,6 +624,8 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
             print(render_icp(shown, note or str(ICP_FILE)))
             print()
+            print("This profile filters (outside = excluded with a reason) and boosts")
+            print("(+points) the scoring in: soe run, score, draft, demo and guide.")
             print("Change it: soe icp edit   Start over: soe icp setup")
             return 0
         if args.icp_command == "setup":
@@ -596,10 +647,12 @@ def run_demo(data_dir: Path, db: Path, icp_flag: Path | None = None) -> int:
     signals_path = data_dir / "demo_signals.json"
     contacts_path = data_dir / "demo_contacts.json"
     providers_path = data_dir / "demo_enrichment.json"
-    for path in (signals_path, contacts_path, providers_path):
-        if not path.exists():
-            print(f"missing {path} - run: python -m engine.demo_fixtures")
-            return 2
+    if not all(p.exists() for p in (signals_path, contacts_path, providers_path)):
+        print("No demo data found - generating fresh demo data (timestamps relative to now).")
+        from engine import demo_fixtures
+        for path in demo_fixtures.write_all(data_dir):
+            print(f"  wrote {path}")
+        print()
 
     ctx = _icp_and_companies(icp_flag, data_dir / "demo_companies.json")
     if ctx is None:
@@ -607,6 +660,7 @@ def run_demo(data_dir: Path, db: Path, icp_flag: Path | None = None) -> int:
     icp, companies = ctx
 
     print("SIGNAL-OUTBOUND-ENGINE DEMO - offline, labeled demo data, nothing sends")
+    print("(WATCH mode. To DO the work: soe run. To LEARN it step by step: soe guide.)")
     print()
     print("== 1/4 SCORING - fresh buying signals against the published ICP formula")
     run = run_scoring(DemoFileSource(signals_path), icp=icp, companies=companies)
@@ -712,13 +766,22 @@ def _icp_setup(path: Path) -> int:
     """Guided questions -> icp.toml. Defaults come from the shipped example."""
     from engine import onboard
     from engine.icp import SIGNAL_WEIGHTS
-    from engine.icp_config import EXAMPLE_FILE, ICP, ICPError, load_icp, write_icp
+    from engine.icp_config import (
+        EXAMPLE_FILE,
+        ICP,
+        PACKAGE_EXAMPLE,
+        ICPError,
+        load_icp,
+        render_icp,
+        write_icp,
+    )
     from engine.signals import SignalType
 
     base: ICP | None = None
-    if EXAMPLE_FILE.exists():
+    example = EXAMPLE_FILE if EXAMPLE_FILE.exists() else PACKAGE_EXAMPLE
+    if example.exists():
         try:
-            base = load_icp(EXAMPLE_FILE)
+            base = load_icp(example)
         except ICPError:
             base = None
     if base is None:
@@ -736,11 +799,17 @@ def _icp_setup(path: Path) -> int:
     print()
     try:
         name = _ask_with_default("Who is this ICP for? (a short name)", base.name)
-        industries = _ask_list("Industries you sell to", base.industries)
-        size_min = _ask_int("Company size - minimum employees", base.size_min)
-        size_max = _ask_int("Company size - maximum employees", base.size_max)
+        industries = _ask_list(
+            "Industries you sell to (others get excluded with a reason)", base.industries
+        )
+        size_min = _ask_int(
+            "Company size - minimum employees (smaller gets excluded)", base.size_min
+        )
+        size_max = _ask_int(
+            "Company size - maximum employees (bigger gets excluded)", base.size_max
+        )
         countries = _ask_list("Countries you sell to (2-letter codes)", base.countries)
-        roles = _ask_list("Job titles you target", base.target_roles)
+        roles = _ask_list("Job titles you target (other titles get skipped)", base.target_roles)
         exclude = _ask_list("Industries to never contact", base.exclude_industries)
         weights = None
         defaults = base.signal_weights or {t.value: SIGNAL_WEIGHTS[t] for t in SignalType}
@@ -767,9 +836,17 @@ def _icp_setup(path: Path) -> int:
             signal_weights=weights,
             exclude_industries=exclude,
         )
+        print()
+        print(render_icp(icp, f"{path} (not saved yet)"))
+        print()
+        save = _ask_with_default("Save this profile? Y/n", "Y").lower()
+        if save not in ("y", "yes"):
+            print("Nothing written. Re-run any time: soe icp setup")
+            return 0
     except onboard.NonInteractive:
-        print("No interactive terminal, so I can't ask the setup questions.")
-        print(f"Instead: cp {EXAMPLE_FILE} icp.toml  and edit it by hand.")
+        print("The setup questions need a real terminal (input ended early).")
+        print("Easiest: run  soe icp setup  again in your terminal and answer the 6 questions.")
+        print(f"Or by hand: cp {example} icp.toml  and edit it.")
         return 2
     write_icp(icp, path)
     print()

@@ -20,6 +20,36 @@ from engine.icp import FitScore
 
 OFFLINE_LABEL = "OFFLINE DEMO DRAFT - template-generated, not LLM output"
 
+# Buyer-facing phrases per signal type. The score table keeps the point math;
+# the email a human receives must read like a human wrote it (ADR-0007).
+SIGNAL_PHRASES = {
+    "hiring": "you're hiring for key roles",
+    "funding": "you just raised a new round",
+    "tech_change": "you're changing your tech stack",
+    "intent": "your team is actively researching this space",
+    "leadership_change": "new leadership is coming in",
+}
+
+
+def human_signal_phrases(reasons: tuple[str, ...]) -> list[str]:
+    """Score reasons -> buyer-facing phrases (deduped, order kept).
+
+    ICP boost reasons (icp_industry/icp_size/icp_country) are about OUR fit,
+    not THEIR movement, so they never appear in the email.
+    """
+    phrases: list[str] = []
+    for reason in reasons:
+        parts = reason.split()
+        if len(parts) < 2:
+            continue
+        kind = parts[1]
+        if kind.startswith("icp_"):
+            continue
+        phrase = SIGNAL_PHRASES.get(kind, f"we noticed {kind.replace('_', ' ')}")
+        if phrase not in phrases:
+            phrases.append(phrase)
+    return phrases
+
 PROMPT_TEMPLATE = """Write a short B2B cold email.
 
 Recipient: {name} ({title}) at {company}
@@ -63,13 +93,13 @@ class OfflineProvider:
 
     def draft(self, contact: Contact, fit: FitScore) -> Draft:
         first = contact.name.split()[0]
-        reasons = "; ".join(fit.reasons)
-        subject = f"{contact.company}: your signals say now ({fit.points} pts)"
+        phrases = human_signal_phrases(fit.reasons)
+        why = " - and ".join(phrases) if phrases else "your team is showing movement we track"
+        subject = f"{contact.company}: your signals say now"
         body = (
             f"[{OFFLINE_LABEL}]\n\n"
             f"Hi {first},\n\n"
-            f"Reaching out because {contact.company} is showing movement we track: "
-            f"{reasons}.\n\n"
+            f"Reaching out because at {contact.company} {why}.\n\n"
             f"Teams in this position usually lose weeks stitching signals, enrichment "
             f"and sequencing by hand. We turn those signals into approved, audited "
             f"outreach the same day.\n\n"

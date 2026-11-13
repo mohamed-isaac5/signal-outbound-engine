@@ -194,7 +194,7 @@ def test_interactive_approve_reprompts_on_bad_answer(capsys, workdir, monkeypatc
     _answers(monkeypatch, ["maybe", "y", "s"])
     assert main(["approve", "--reviewer", "mohamed"]) == 0
     out = capsys.readouterr().out
-    assert "Please answer y, n or s." in out
+    assert "Please answer y, n, s or w (w = why this company)." in out
 
 
 def test_interactive_approve_empty_queue(capsys, workdir) -> None:  # type: ignore[no-untyped-def]

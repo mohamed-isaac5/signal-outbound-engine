@@ -4,6 +4,30 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-11-13
+
+### Added
+- UX pass over the whole journey (15 findings, all shipped):
+  - Drafts cite buying signals in buyer language ("you're hiring for key
+    roles"), never point math or source names; ICP boost reasons stay out of
+    the email entirely. Point syntax lives in the score table and audit trail.
+  - Plain-language ICP notices ("who you sell to is not set up yet..."), and
+    the example ICP now ships inside the package, so an installed `soe` finds
+    it from any directory.
+  - run/guide/demo positioned everywhere they co-appear: DO the work / LEARN
+    it / WATCH it. The demo says so itself.
+  - Score table states the source once in the header instead of repeating it
+    in every reason.
+  - `soe audit` shows local time and human event labels; raw names stay in
+    the database.
+  - Plain one-line headers on score/enrich/draft; missing-data errors point
+    at `soe run` only.
+  - `soe icp show` explains what the profile affects; `soe icp setup` shows a
+    recap and asks before saving.
+  - `soe` welcome screen surfaces waiting drafts; review gains a `w` (why)
+    answer that prints the draft's stored point-by-point breakdown (new
+    `reasons` column, migrated); piped answers echo so transcripts read.
+
 ## [1.4.0] - 2026-11-13
 
 ### Added

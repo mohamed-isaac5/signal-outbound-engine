@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import sys
 from pathlib import Path
 
 from engine import demo_fixtures
@@ -43,9 +44,12 @@ def default_reviewer() -> str:
 
 def _ask(prompt: str) -> str:
     try:
-        return input(prompt)
+        answer = input(prompt)
     except (EOFError, OSError) as exc:
         raise NonInteractive from exc
+    if not sys.stdin.isatty():
+        print(answer)  # piped answers are invisible; echo so transcripts read naturally
+    return answer
 
 
 def ensure_fixtures() -> bool:
@@ -198,7 +202,17 @@ def review_queue(
             approved += 1
             continue
         while True:
-            answer = _ask("Approve this draft? [y]es / [n]o / [s]kip: ").strip().lower()
+            answer = _ask("Approve this draft? [y]es / [n]o / [s]kip / [w]hy: ").strip().lower()
+            if answer in ("w", "why"):
+                raw = row.get("reasons")
+                reasons = json.loads(raw) if isinstance(raw, str) and raw else []
+                if reasons:
+                    print(f"Why {row['company']} scored {row['fit_points']}, point by point:")
+                    for reason in reasons:
+                        print(f"  {reason}")
+                else:
+                    print("No point-by-point breakdown stored for this draft.")
+                continue
             if answer in ("y", "yes"):
                 decide(
                     conn,
@@ -235,7 +249,7 @@ def review_queue(
                 print("-> left pending (still in your queue)")
                 skipped += 1
                 break
-            print("Please answer y, n or s.")
+            print("Please answer y, n, s or w (w = why this company).")
     return approved, rejected, skipped
 
 

@@ -20,8 +20,11 @@ except ModuleNotFoundError:  # pragma: no cover
 
 # Lookup order for the ICP file: --icp flag, then ./icp.toml, then the
 # shipped example (so a cold clone runs immediately, with a printed note).
+# The example also ships inside the package so an installed `soe` finds it
+# no matter which directory it runs from.
 ICP_FILE = Path("icp.toml")
-EXAMPLE_FILE = Path("data/icp.example.toml")
+EXAMPLE_FILE = Path("data/icp.example.toml")  # repo checkout convenience
+PACKAGE_EXAMPLE = Path(__file__).with_name("icp.example.toml")  # always present
 
 # Published ICP closeness points (README.md#scoring).
 INDUSTRY_POINTS = 10
@@ -186,10 +189,19 @@ def resolve_icp(flag_path: Path | None = None) -> tuple[ICP | None, str]:
         return (load_icp(flag_path), "")
     if ICP_FILE.exists():
         return (load_icp(ICP_FILE), "")
-    if EXAMPLE_FILE.exists():
-        icp = load_icp(EXAMPLE_FILE)
-        return (icp, f"using the example ICP ({EXAMPLE_FILE}) - make yours: soe icp setup")
-    return (None, "no icp.toml found - running without ICP filtering; create one: soe icp setup")
+    example = EXAMPLE_FILE if EXAMPLE_FILE.exists() else PACKAGE_EXAMPLE
+    if example.exists():
+        icp = load_icp(example)
+        return (
+            icp,
+            "using the example customer profile (mid-market B2B SaaS)"
+            " - make yours: soe icp setup",
+        )
+    return (
+        None,
+        "who you sell to is not set up yet, so companies are not filtered by "
+        "industry, size, country or role. Set it up in 6 questions: soe icp setup",
+    )
 
 
 def load_companies(path: Path) -> dict[str, CompanyProfile]:
