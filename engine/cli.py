@@ -907,6 +907,7 @@ def _icp_edit(path: Path) -> int:
         "target roles",
         "excluded industries",
         "signal weights",
+        "email signature",
     ]
     for number, field in enumerate(fields, 1):
         print(f"  {number}) {field}")
@@ -945,6 +946,11 @@ def _icp_edit(path: Path) -> int:
                 )
                 weights[signal_type.value] = value if value is not None else 0
             icp = replace(icp, signal_weights=weights)
+        elif choice == "8":
+            sender = _ask_with_default(
+                "Your name, to sign the emails", icp.sender_name or "demo signature"
+            )
+            icp = replace(icp, sender_name=None if sender == "demo signature" else sender)
         else:
             print("Unknown choice - nothing changed.")
             return 2

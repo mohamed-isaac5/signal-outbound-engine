@@ -263,18 +263,29 @@ def render_icp(icp: ICP, source: str) -> str:
     return "\n".join(lines)
 
 
+def _toml_str(value: str) -> str:
+    """One TOML basic string, escaped. Without this a quote bricks the file and
+    a backslash silently mangles the value (a real newline appears)."""
+    quote = chr(34)
+    backslash = chr(92)
+    out = value.replace(backslash, backslash * 2).replace(quote, backslash + quote)
+    for ch, esc in ((chr(9), "t"), (chr(10), "n"), (chr(13), "r")):
+        out = out.replace(ch, backslash + esc)
+    return quote + out + quote
+
+
 def write_icp(icp: ICP, path: Path) -> None:
     """Write the fixed TOML structure (hand-rolled: no new dependencies)."""
 
     def fmt_list(values: tuple[str, ...]) -> str:
-        return "[" + ", ".join(f'"{v}"' for v in values) + "]"
+        return "[" + ", ".join(_toml_str(v) for v in values) + "]"
 
     lines = [
         "# Ideal Customer Profile - who this engine sells to (edit: soe icp edit).",
-        f'name = "{icp.name}"',
+        f"name = {_toml_str(icp.name)}",
     ]
     if icp.sender_name:
-        lines.append(f'sender_name = "{icp.sender_name}"')
+        lines.append(f"sender_name = {_toml_str(icp.sender_name)}")
     lines += [
         f"industries = {fmt_list(icp.industries)}",
         f"countries = {fmt_list(icp.countries)}",

@@ -37,7 +37,7 @@ pip install -e ".[dev]"        # engine + test/lint tooling
 **Verify the install** (about a second):
 
 ```bash
-pytest -q     # 202 tests, all offline
+pytest -q     # 206 tests, all offline
 soe demo      # the whole chain, narrated, on labeled demo data
 ```
 
@@ -228,7 +228,7 @@ recorded as ADRs in [ARCHITECTURE.md](ARCHITECTURE.md).
 ## Principles
 
 - **Deterministic core.** Scoring, waterfall order, queue rules: pure functions
-  with tests. CI runs ruff, mypy --strict and pytest (202 tests) on 3.11/3.12.
+  with tests. CI runs ruff, mypy --strict and pytest (206 tests) on 3.11/3.12.
 - **Honesty over coverage.** A field the providers cannot find stays `null`.
   The engine never invents data to fill a gap - see Karim above.
 - **Human gate.** Drafts wait in an approval queue. A named reviewer approves

@@ -4,6 +4,16 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.1] - 2026-11-13
+
+### Fixed
+- write_icp now escapes every string it emits: a quote in any setup/edit
+  answer no longer bricks icp.toml, and a backslash no longer silently
+  mangles the saved value (TOML escape sequences). Hostile-input roundtrip
+  tests pin name, sender_name and list items.
+- `soe icp edit` can now change the email signature (menu item 8); setting
+  it back to "demo signature" clears sender_name.
+
 ## [1.6.0] - 2026-11-13
 
 ### Added

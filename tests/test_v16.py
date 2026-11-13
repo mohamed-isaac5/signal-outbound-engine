@@ -253,3 +253,69 @@ def test_why_on_legacy_draft_recomputes(capsys: pytest.CaptureFixture[str],
     out = capsys.readouterr().out
     assert "point by point" in out
     assert "+30 hiring (demo-file)" in out
+
+
+# ---- v1.6.1: hostile input never corrupts icp.toml -------------------------------
+
+
+def test_toml_escaping_roundtrip_hostile_strings(tmp_path: Path) -> None:
+    from engine.icp_config import ICP, _toml_str
+
+    quote_name = 'Mo "Mo" Isaac'
+    backslash_name = "C:" + chr(92) + "new path"
+    formula_industry = '=HYPERLINK("http://evil","click")'
+    icp = ICP(
+        name=backslash_name,
+        industries=(formula_industry, "sa as"),
+        size_min=1,
+        size_max=9,
+        countries=("US",),
+        target_roles=("vp",),
+        signal_weights=None,
+        exclude_industries=(),
+        sender_name=quote_name,
+    )
+    path = tmp_path / "icp.toml"
+    write_icp(icp, path)
+    back = load_icp(path)  # must parse AND preserve every byte
+    assert back.name == backslash_name
+    assert back.sender_name == quote_name
+    assert back.industries == (formula_industry, "sa as")
+    assert _toml_str('a"b') == '"a' + chr(92) + '"b"'
+    assert _toml_str("a" + chr(92) + "b") == '"a' + chr(92) * 2 + 'b"'
+
+
+def test_setup_with_quoted_answer_writes_valid_toml(tmp_path: Path,
+                                                    monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    feed(monkeypatch,
+         ['My " Agency', '=HYPERLINK("x","y")', "50", "500", "US", "vp", "", "", "", ""])
+    assert main(["icp", "setup"]) == 0
+    icp = load_icp(tmp_path / "icp.toml")  # would raise on the pre-fix build
+    assert icp.name == 'My " Agency'
+    # list answers comma-split by design; the quotes must still roundtrip safely
+    assert icp.industries == ('=HYPERLINK("x"', '"y")')
+
+
+def test_icp_edit_offers_email_signature(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                                         capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.chdir(tmp_path)
+    from tests.test_icp_config import make_icp
+
+    write_icp(make_icp(), tmp_path / "icp.toml")
+    feed(monkeypatch, ["8", "Mo Isaac"])
+    assert main(["icp", "edit"]) == 0
+    out = capsys.readouterr().out
+    assert "email signature" in out
+    assert load_icp(tmp_path / "icp.toml").sender_name == "Mo Isaac"
+
+
+def test_icp_edit_signature_back_to_demo(tmp_path: Path,
+                                         monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    from tests.test_icp_config import make_icp
+
+    write_icp(make_icp(), tmp_path / "icp.toml")
+    feed(monkeypatch, ["8", "demo signature"])
+    assert main(["icp", "edit"]) == 0
+    assert load_icp(tmp_path / "icp.toml").sender_name is None
