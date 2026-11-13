@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
+from dataclasses import replace
 from pathlib import Path
 
 from engine import __version__
+from engine.approve import OUTCOME_WORDS
 from engine.connectors import DemoFileSource
 from engine.enrich import Contact, run_waterfall
 from engine.icp_config import ICP, CompanyProfile
@@ -327,6 +330,15 @@ def _welcome() -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    try:
+        return _main(argv)
+    except sqlite3.DatabaseError:
+        print("The local database file is damaged or is not a database.")
+        print("Move it away (your audit history lives in it), then start fresh: soe run")
+        return 2
+
+
+def _main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.version:
@@ -442,7 +454,9 @@ def main(argv: list[str] | None = None) -> int:
         providers = load_demo_providers(args.providers)
         rows = json.loads(args.contacts.read_text())
         drafter = (
-            OfflineProvider() if args.provider == "offline" else AnthropicProvider()
+            OfflineProvider(sender_name=icp.sender_name if icp else None)
+            if args.provider == "offline"
+            else AnthropicProvider()
         )
         dconn = open_db(args.db) if args.db is not None else None
         made = 0
@@ -577,6 +591,7 @@ def main(argv: list[str] | None = None) -> int:
             if not rows:
                 print("audit log is empty")
             for created_at, event, detail in rows:
+                detail = detail.replace("(enqueued)", "(waiting for your review)")
                 print(f"{_local_time(created_at)}  {_event_label(event):<16} {detail}")
             return 0
         from engine.approve import ensure_queue
@@ -594,7 +609,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"draft {args.draft_id}")
         print(f"  to={recipient} fit={fit_points} provider={provider}")
         print(f"  status={status}"
-              + (f" by={reviewer} at={decided_at}" if reviewer else ""))
+              + (f" by={reviewer} at={_local_time(decided_at) if decided_at else '-'}"
+                 if reviewer else ""))
         if reason:
             print(f"  reason={reason}")
         # LIKE metacharacters in ids/emails are data, not patterns.
@@ -607,6 +623,7 @@ def main(argv: list[str] | None = None) -> int:
         ).fetchall()
         print("  trail:")
         for created_at, event, detail in events:
+            detail = detail.replace("(enqueued)", "(waiting for your review)")
             print(f"    {_local_time(created_at)}  {_event_label(event)}: {detail}")
         return 0
     if args.command == "icp":
@@ -707,11 +724,11 @@ def run_demo(data_dir: Path, db: Path, icp_flag: Path | None = None) -> int:
                 f"title '{eresult.contact.title or 'unknown'}' outside ICP target roles"
             )
             continue
-        drafter = OfflineProvider()
+        drafter = OfflineProvider(sender_name=icp.sender_name if icp else None)
         d = drafter.draft(eresult.contact, fit)
         outcome = enqueue(conn, f"{d.contact.company}:{d.contact.email}", d)
         made += 1
-        print(f"  drafted for {d.contact.email} (fit {d.fit.points}) [{outcome}]")
+        print(f"  drafted for {d.contact.email} (fit {d.fit.points}) - {OUTCOME_WORDS[outcome]}")
     print(f"-> {made} draft(s), each labeled: {OFFLINE_LABEL}")
     print()
     print("== 4/4 THE HUMAN GATE - nothing sends without a named approver")
@@ -795,6 +812,7 @@ def _icp_setup(path: Path) -> int:
             signal_weights=None,
             exclude_industries=(),
         )
+    base = replace(base, name="My ICP")
     print("Set up your Ideal Customer Profile. Press Enter to keep the [default].")
     print()
     try:
@@ -811,6 +829,10 @@ def _icp_setup(path: Path) -> int:
         countries = _ask_list("Countries you sell to (2-letter codes)", base.countries)
         roles = _ask_list("Job titles you target (other titles get skipped)", base.target_roles)
         exclude = _ask_list("Industries to never contact", base.exclude_industries)
+        sender = _ask_with_default(
+            "Your name, to sign the emails", base.sender_name or "demo signature"
+        )
+        sender_name = None if sender == "demo signature" else sender
         weights = None
         defaults = base.signal_weights or {t.value: SIGNAL_WEIGHTS[t] for t in SignalType}
         tune = _ask_with_default(
@@ -835,6 +857,7 @@ def _icp_setup(path: Path) -> int:
             target_roles=roles,
             signal_weights=weights,
             exclude_industries=exclude,
+            sender_name=sender_name,
         )
         print()
         print(render_icp(icp, f"{path} (not saved yet)"))
@@ -858,7 +881,6 @@ def _icp_setup(path: Path) -> int:
 
 def _icp_edit(path: Path) -> int:
     """Change one field of an existing icp.toml."""
-    from dataclasses import replace
 
     from engine import onboard
     from engine.icp import SIGNAL_WEIGHTS

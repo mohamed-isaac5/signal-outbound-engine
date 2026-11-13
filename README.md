@@ -37,7 +37,7 @@ pip install -e ".[dev]"        # engine + test/lint tooling
 **Verify the install** (about a second):
 
 ```bash
-pytest -q     # 183 tests, all offline
+pytest -q     # 202 tests, all offline
 soe demo      # the whole chain, narrated, on labeled demo data
 ```
 
@@ -182,7 +182,8 @@ immediately and the ICP is one `soe icp setup` away.
 Drafting is provider-agnostic. The default provider is **offline and
 deterministic** - template drafts assembled from the real score reasons, no API
 key, no spend, every draft labeled `OFFLINE DEMO DRAFT`. Drafts cite the
-signals in buyer language ("you're hiring for key roles"), never point math -
+signals in buyer language (subject "Globex: hiring + new funding", body
+"you're hiring for key roles"), never point math or system vocabulary -
 the point breakdown stays in the score table and the audit trail. A real Anthropic
 adapter (Messages API) implements the same interface:
 
@@ -227,7 +228,7 @@ recorded as ADRs in [ARCHITECTURE.md](ARCHITECTURE.md).
 ## Principles
 
 - **Deterministic core.** Scoring, waterfall order, queue rules: pure functions
-  with tests. CI runs ruff, mypy --strict and pytest (183 tests) on 3.11/3.12.
+  with tests. CI runs ruff, mypy --strict and pytest (202 tests) on 3.11/3.12.
 - **Honesty over coverage.** A field the providers cannot find stays `null`.
   The engine never invents data to fill a gap - see Karim above.
 - **Human gate.** Drafts wait in an approval queue. A named reviewer approves

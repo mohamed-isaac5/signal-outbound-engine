@@ -74,6 +74,13 @@ def ensure_queue(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+OUTCOME_WORDS = {
+    "enqueued": "waiting for your review",
+    "updated": "updated - waiting for your review",
+    "kept_decided": "already reviewed - keeping your decision",
+}
+
+
 def _audit_tx(conn: sqlite3.Connection, event: str, detail: str) -> None:
     """Audit write inside the caller's transaction - never commits on its own."""
     conn.execute("INSERT INTO audit (event, detail) VALUES (?, ?)", (event, detail))
@@ -117,7 +124,11 @@ def enqueue(conn: sqlite3.Connection, draft_id: str, draft: Draft) -> str:
             (draft.contact.name, draft.subject, draft.body, draft.fit.points, draft.provider,
              json.dumps(list(draft.fit.reasons)), draft_id),
         )
-    _audit_tx(conn, "draft_enqueued", f"id={draft_id} to={draft.contact.email} ({outcome})")
+    _audit_tx(
+        conn,
+        "draft_enqueued",
+        f"id={draft_id} to={draft.contact.email} ({OUTCOME_WORDS[outcome]})",
+    )
     conn.commit()
     return outcome
 

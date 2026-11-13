@@ -4,6 +4,26 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-11-13
+
+### Added
+- Sender identity: `soe icp setup` asks your name and every offline draft
+  signs with it (`sender_name` in icp.toml); unset keeps the labeled
+  "signal-outbound-engine demo" signature. Shown in `soe icp show`.
+- Adversarial-review hardening round:
+  - A damaged database file now prints a clean recovery message instead of a
+    Python traceback, on every command.
+  - Draft subjects speak human too: "Globex: hiring + new funding" from a
+    published fragment map (two fragments max, "quick question" fallback) -
+    the last system vocabulary leaves the buyer-facing output.
+  - Multi-signal bodies join like English ("a, b and c").
+  - The review queue's `w` recomputes the point breakdown for drafts enqueued
+    before breakdowns were stored, instead of dead-ending.
+  - The guide counts its steps honestly; `audit --id` shows one (local)
+    clock; run/audit output shows decision words ("already reviewed -
+    keeping your decision"), never machine tokens; the setup default ICP
+    name is "My ICP", never the example profile's label.
+
 ## [1.5.0] - 2026-11-13
 
 ### Added

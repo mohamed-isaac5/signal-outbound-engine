@@ -146,3 +146,10 @@ reasons preserves explainability without leaking internals.
 a single pinned table (every signal type must have a phrase, enforced by
 test), the unknown-kind fallback is itself tested, and the audit trail always
 keeps the raw form for debugging.
+
+**Update (v1.6.0).** The same rule now covers the subject line: a published
+fragment map (`SUBJECT_PHRASES`, two fragments max, "quick question"
+fallback) replaces the last system vocabulary in buyer-facing output. Sender
+identity is config (`sender_name` in icp.toml), not code: an unset sender
+keeps the labeled "signal-outbound-engine demo" signature so demo output is
+never mistaken for a person's email.

@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 from engine import demo_fixtures
-from engine.approve import Approval, Decision, decide, enqueue, pending
+from engine.approve import OUTCOME_WORDS, Approval, Decision, decide, enqueue, pending
 from engine.connectors import DemoFileSource
 from engine.enrich import Contact, run_waterfall
 from engine.export import export_approved
@@ -136,7 +136,7 @@ def _draft_step(
     fits = {f.company: f for f in run.scores}
     providers = load_demo_providers(PROVIDERS)
     rows = json.loads(CONTACTS.read_text())
-    drafter = OfflineProvider()
+    drafter = OfflineProvider(sender_name=icp.sender_name if icp else None)
     made = 0
     for row in rows:
         fit = fits.get(row["company"])
@@ -167,13 +167,40 @@ def _draft_step(
                 f"to={draft.contact.email} fit={draft.fit.points} provider={draft.provider}",
             )
         made += 1
-        print(f"  drafted for {draft.contact.email} (fit {draft.fit.points}) [{outcome}]")
+        print(
+            f"  drafted for {draft.contact.email} (fit {draft.fit.points})"
+            f" - {OUTCOME_WORDS[outcome]}"
+        )
     print(f"-> {made} draft(s) written, each labeled: {OFFLINE_LABEL}")
     return made
 
 
+def _legacy_reasons(company: str, data_dir: Path) -> list[str]:
+    """Point-by-point reasons for a draft enqueued before they were stored:
+    recompute from the demo data and ICP. Empty on any failure."""
+    try:
+        from engine.icp_config import load_companies, resolve_icp
+        from engine.runner import run_scoring
+
+        icp, _note = resolve_icp(None)
+        run = run_scoring(
+            DemoFileSource(data_dir / "demo_signals.json"),
+            icp=icp,
+            companies=load_companies(data_dir / "demo_companies.json"),
+        )
+        for fit in run.scores:
+            if fit.company == company:
+                return list(fit.reasons)
+    except Exception:
+        pass
+    return []
+
+
 def review_queue(
-    conn: sqlite3.Connection, reviewer: str, assume_yes: bool = False
+    conn: sqlite3.Connection,
+    reviewer: str,
+    assume_yes: bool = False,
+    data_dir: Path = Path("data"),
 ) -> tuple[int, int, int]:
     """Walk the pending queue draft by draft. Returns (approved, rejected, skipped)."""
     rows = pending(conn)
@@ -206,12 +233,14 @@ def review_queue(
             if answer in ("w", "why"):
                 raw = row.get("reasons")
                 reasons = json.loads(raw) if isinstance(raw, str) and raw else []
+                if not reasons:
+                    reasons = _legacy_reasons(str(row["company"]), data_dir)
                 if reasons:
                     print(f"Why {row['company']} scored {row['fit_points']}, point by point:")
                     for reason in reasons:
                         print(f"  {reason}")
                 else:
-                    print("No point-by-point breakdown stored for this draft.")
+                    print("No point-by-point breakdown available for this draft.")
                 continue
             if answer in ("y", "yes"):
                 decide(
@@ -324,7 +353,7 @@ def run_guide(
     companies: dict[str, CompanyProfile] | None = None,
 ) -> int:
     """`soe guide`: the interactive walkthrough, plain language at every step."""
-    print("Welcome to the guided run. About two minutes, five steps.")
+    print("Welcome to the guided run. About two minutes, four steps.")
     print("Everything here is offline demo data: no API keys, no spend,")
     print("and nothing ever sends - drafts wait for your explicit approval.")
     try:

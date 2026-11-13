@@ -39,6 +39,7 @@ _TOP_KEYS = {
     "company_size",
     "signal_weights",
     "exclude",
+    "sender_name",
 }
 
 
@@ -66,6 +67,7 @@ class ICP:
     target_roles: tuple[str, ...]
     signal_weights: dict[str, int] | None
     exclude_industries: tuple[str, ...]
+    sender_name: str | None = None
 
     def exclusion(self, meta: CompanyProfile | None) -> str | None:
         """Why this company is out of the ICP, or None when it is in (or unknown)."""
@@ -165,6 +167,9 @@ def load_icp(path: Path) -> ICP:
             if not isinstance(value, int) or value < 0:
                 raise ICPError(f"icp: signal_weights.{key} must be a non-negative integer")
             weights[key] = value
+    sender_raw = raw.get("sender_name")
+    if sender_raw is not None and (not isinstance(sender_raw, str) or not sender_raw.strip()):
+        raise ICPError("icp: 'sender_name' must be a non-empty string when present")
     exclude_raw = raw.get("exclude", {})
     if not isinstance(exclude_raw, dict):
         raise ICPError("icp: 'exclude' must be a table like {industries = [...]}")
@@ -180,6 +185,7 @@ def load_icp(path: Path) -> ICP:
         target_roles=_str_list(raw.get("target_roles"), "target_roles"),
         signal_weights=weights,
         exclude_industries=_str_list(exclude_raw.get("industries"), "exclude.industries"),
+        sender_name=sender_raw.strip() if isinstance(sender_raw, str) else None,
     )
 
 
@@ -200,7 +206,8 @@ def resolve_icp(flag_path: Path | None = None) -> tuple[ICP | None, str]:
     return (
         None,
         "who you sell to is not set up yet, so companies are not filtered by "
-        "industry, size, country or role. Set it up in 6 questions: soe icp setup",
+        "industry, size, country or role. Set it up with a few guided "
+        "questions: soe icp setup",
     )
 
 
@@ -246,6 +253,7 @@ def render_icp(icp: ICP, source: str) -> str:
         f"  countries:         {', '.join(icp.countries) or '(any)'}",
         f"  target roles:      {', '.join(icp.target_roles) or '(any)'}",
         f"  exclude:           {', '.join(icp.exclude_industries) or '(none)'}",
+        f"  email signature:   {icp.sender_name or '(engine demo signature)'}",
     ]
     if icp.signal_weights:
         weights = ", ".join(f"{k}={v}" for k, v in sorted(icp.signal_weights.items()))
@@ -264,6 +272,10 @@ def write_icp(icp: ICP, path: Path) -> None:
     lines = [
         "# Ideal Customer Profile - who this engine sells to (edit: soe icp edit).",
         f'name = "{icp.name}"',
+    ]
+    if icp.sender_name:
+        lines.append(f'sender_name = "{icp.sender_name}"')
+    lines += [
         f"industries = {fmt_list(icp.industries)}",
         f"countries = {fmt_list(icp.countries)}",
         f"target_roles = {fmt_list(icp.target_roles)}",

@@ -351,6 +351,7 @@ def test_icp_setup_writes_file(
             "US, GB",  # countries
             "cfo, vp finance",  # roles
             "none",  # excluded industries
+            "Mohamed",  # sender name (signs the emails)
             "y",  # tune weights
             "10",  # hiring
             "50",  # funding
@@ -368,6 +369,8 @@ def test_icp_setup_writes_file(
     assert icp.industries == ("fintech", "banking")
     assert (icp.size_min, icp.size_max) == (200, 5000)
     assert icp.exclude_industries == ()
+    assert icp.sender_name == "Mohamed"
+    assert 'sender_name = "Mohamed"' in (tmp_path / "icp.toml").read_text()
     assert icp.signal_weights is not None and icp.signal_weights["funding"] == 50
 
 
@@ -375,18 +378,19 @@ def test_icp_setup_defaults_on_enter(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    feed(monkeypatch, ["", "", "", "", "", "", "", "", ""])
+    feed(monkeypatch, ["", "", "", "", "", "", "", "", "", ""])
     assert main(["icp", "setup"]) == 0
     icp = load_icp(tmp_path / "icp.toml")
     assert icp.industries  # defaults kept (from example or fallback)
     assert icp.signal_weights is None  # "N" to tuning keeps defaults
+    assert icp.sender_name is None  # "demo signature" kept
 
 
 def test_icp_setup_rejects_inverted_size(
     capsys: pytest.CaptureFixture[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    feed(monkeypatch, ["x", "saas", "500", "50", "", "", "", ""])
+    feed(monkeypatch, ["x", "saas", "500", "50", "", "", "", "", ""])
     assert main(["icp", "setup"]) == 2
     assert "Minimum size" in capsys.readouterr().out
     assert not (tmp_path / "icp.toml").exists()
@@ -525,7 +529,7 @@ def test_ask_int_reprompts_until_valid(
     monkeypatch.chdir(tmp_path)
     feed(
         monkeypatch,
-        ["x", "saas", "abc", "-3", "20", "300", "EG", "vp sales", "none", "n", ""],
+        ["x", "saas", "abc", "-3", "20", "300", "EG", "vp sales", "none", "", "n", ""],
     )
     assert main(["icp", "setup"]) == 0
     out = capsys.readouterr().out

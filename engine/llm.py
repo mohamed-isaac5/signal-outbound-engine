@@ -31,6 +31,50 @@ SIGNAL_PHRASES = {
 }
 
 
+SUBJECT_PHRASES = {
+    "hiring": "hiring",
+    "funding": "new funding",
+    "tech_change": "tech change",
+    "intent": "active research",
+    "leadership_change": "new leadership",
+}
+
+
+def _signal_kinds(reasons: tuple[str, ...]) -> list[str]:
+    """Signal kinds from score reasons, deduped, icp_* boost reasons excluded."""
+    kinds: list[str] = []
+    for reason in reasons:
+        parts = reason.split()
+        if len(parts) < 2:
+            continue
+        kind = parts[1]
+        if kind.startswith("icp_"):
+            continue
+        if kind not in kinds:
+            kinds.append(kind)
+    return kinds
+
+
+def subject_for(company: str, reasons: tuple[str, ...]) -> str:
+    """Buyer-facing subject: short human fragments, never system vocabulary.
+
+    At most two fragments so the subject stays scannable in an inbox list.
+    """
+    fragments = [SUBJECT_PHRASES.get(k, k.replace("_", " ")) for k in _signal_kinds(reasons)]
+    if not fragments:
+        return f"{company}: quick question"
+    return f"{company}: {' + '.join(fragments[:2])}"
+
+
+def join_english(items: list[str]) -> str:
+    """'a' / 'a and b' / 'a, b and c' - the way a person writes a list."""
+    if len(items) <= 1:
+        return "".join(items)
+    if len(items) == 2:
+        return f"{items[0]} and {items[1]}"
+    return ", ".join(items[:-1]) + f" and {items[-1]}"
+
+
 def human_signal_phrases(reasons: tuple[str, ...]) -> list[str]:
     """Score reasons -> buyer-facing phrases (deduped, order kept).
 
@@ -91,11 +135,14 @@ class OfflineProvider:
 
     name = "offline-template"
 
+    def __init__(self, sender_name: str | None = None) -> None:
+        self._signature = sender_name or "signal-outbound-engine demo"
+
     def draft(self, contact: Contact, fit: FitScore) -> Draft:
         first = contact.name.split()[0]
         phrases = human_signal_phrases(fit.reasons)
-        why = " - and ".join(phrases) if phrases else "your team is showing movement we track"
-        subject = f"{contact.company}: your signals say now"
+        why = join_english(phrases) if phrases else "your team is showing movement we track"
+        subject = subject_for(contact.company, fit.reasons)
         body = (
             f"[{OFFLINE_LABEL}]\n\n"
             f"Hi {first},\n\n"
@@ -104,7 +151,7 @@ class OfflineProvider:
             f"and sequencing by hand. We turn those signals into approved, audited "
             f"outreach the same day.\n\n"
             f"Worth 15 minutes this week?\n\n"
-            f"- signal-outbound-engine demo"
+            f"- {self._signature}"
         )
         return Draft(contact=contact, subject=subject, body=body, fit=fit, provider=self.name)
 

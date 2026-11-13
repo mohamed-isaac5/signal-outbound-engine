@@ -57,7 +57,7 @@ def test_offline_draft_reads_like_a_human_email() -> None:
     d = OfflineProvider().draft(
         contact(), fit(("+30 hiring (demo-file)", "+10 icp_industry (saas)"))
     )
-    assert d.subject == "Globex: your signals say now"
+    assert d.subject == "Globex: hiring"
     assert "at Globex you're hiring for key roles" in d.body
     assert "icp_industry" not in d.body
     assert "+" not in d.body.split("\n")[2] or "OFFLINE" in d.body.split("\n")[0]
@@ -175,7 +175,7 @@ def test_review_why_without_stored_reasons(capsys: pytest.CaptureFixture[str],
     from engine.onboard import review_queue
 
     review_queue(conn, "mohamed")
-    assert "No point-by-point breakdown stored" in capsys.readouterr().out
+    assert "No point-by-point breakdown available" in capsys.readouterr().out
 
 
 def test_piped_answers_are_echoed(capsys: pytest.CaptureFixture[str],
@@ -198,7 +198,7 @@ def feed(monkeypatch: pytest.MonkeyPatch, answers: list[str]) -> None:
 def test_setup_recap_can_abort(capsys: pytest.CaptureFixture[str], tmp_path: Path,
                                monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
-    feed(monkeypatch, ["", "", "", "", "", "", "", "", "n"])
+    feed(monkeypatch, ["", "", "", "", "", "", "", "", "", "n"])
     assert main(["icp", "setup"]) == 0
     out = capsys.readouterr().out
     assert "(not saved yet)" in out
