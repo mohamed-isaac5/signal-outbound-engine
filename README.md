@@ -31,10 +31,20 @@ signals and points that produced it.
   The engine never invents data to fill a gap.
 - **Human gate.** Nothing sends without an approval recorded against the draft.
 
+## Quickstart (offline demo)
+
+```bash
+pip install -e .
+soe score --source data/demo_signals.json
+```
+
+The fixture is labeled demo data (fictional companies); live connectors plug
+into the same `SignalSource` protocol.
+
 ## Roadmap
 
 - [x] M0 - scaffold, contracts, tests, CI
-- [ ] M1 - signal connectors + scoring runs
+- [x] M1 - signal connectors + scoring runs
 - [ ] M2 - enrichment waterfall (real providers)
 - [ ] M3 - LLM drafting (Anthropic)
 - [ ] M4 - approval queue + audit trail UI
