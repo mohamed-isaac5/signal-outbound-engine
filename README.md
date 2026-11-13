@@ -23,6 +23,15 @@ A combined fit of **50+** routes the account to drafting. Every draft keeps its
 score breakdown (`reasons`) so any outbound message traces back to the exact
 signals and points that produced it.
 
+## Drafting: honest by default
+
+Drafting is provider-agnostic. The default provider is **offline and
+deterministic** - template drafts assembled from the real score reasons, no API
+key, no spend, and every draft labeled `OFFLINE DEMO DRAFT`. An Anthropic
+adapter implements the same interface and activates the day a key is set
+(`ANTHROPIC_API_KEY`); without one it fails loudly, never silently falls back.
+Demo numbers in this README come from the labeled demo fixtures, not real sends.
+
 ## Principles
 
 - **Deterministic core.** Scoring, waterfall order, and approval rules are pure
@@ -37,6 +46,7 @@ signals and points that produced it.
 pip install -e .
 soe score --source data/demo_signals.json
 soe enrich --contacts data/demo_contacts.json --providers data/demo_enrichment.json
+soe draft --signals data/demo_signals.json --contacts data/demo_contacts.json --providers data/demo_enrichment.json
 ```
 
 The fixture is labeled demo data (fictional companies); live connectors plug
@@ -47,7 +57,7 @@ into the same `SignalSource` protocol.
 - [x] M0 - scaffold, contracts, tests, CI
 - [x] M1 - signal connectors + scoring runs
 - [x] M2 - enrichment waterfall (demo providers live; real providers plug into the same protocol)
-- [ ] M3 - LLM drafting (Anthropic)
+- [x] M3 - drafting (offline provider default; Anthropic adapter ready for a key)
 - [ ] M4 - approval queue + audit trail UI
 - [ ] M5 - case-study README + public release
 

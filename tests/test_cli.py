@@ -37,6 +37,18 @@ def test_enrich_command_runs_end_to_end(capsys) -> None:  # type: ignore[no-unty
     assert "(unknown)" in out  # Karim Nabil honestly not found
 
 
-def test_placeholder_subcommand(capsys) -> None:  # type: ignore[no-untyped-def]
-    assert main(["draft"]) == 0
-    assert "milestone" in capsys.readouterr().out
+def test_draft_command_runs_end_to_end(capsys) -> None:  # type: ignore[no-untyped-def]
+    rc = main(
+        [
+            "draft",
+            "--signals", str(FIXTURE),
+            "--contacts", str(CONTACTS),
+            "--providers", str(PROVIDERS),
+        ]
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "OFFLINE DEMO DRAFT" in out
+    assert "sara.adel@northwind-demo.example" in out
+    # Karim (Initech) is below threshold AND unknown email - never drafted
+    assert "Initech" not in out

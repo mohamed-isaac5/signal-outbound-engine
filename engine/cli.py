@@ -10,6 +10,7 @@ from pathlib import Path
 from engine import __version__
 from engine.connectors import DemoFileSource
 from engine.enrich import Contact, run_waterfall
+from engine.llm import OFFLINE_LABEL, OfflineProvider
 from engine.providers_demo import load_demo_providers
 from engine.runner import audit_run, render_table, run_scoring
 from engine.store import log_event, open_db
@@ -34,7 +35,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--providers", type=Path, required=True, help="JSON fixture of demo providers"
     )
     enrich.add_argument("--db", type=Path, default=None, help="audit database path")
-    sub.add_parser("draft", help="draft outreach from approved fits (M3)")
+    draft = sub.add_parser("draft", help="draft outreach for qualified fits (offline default)")
+    draft.add_argument("--signals", type=Path, required=True, help="JSON fixture of signals")
+    draft.add_argument("--contacts", type=Path, required=True, help="JSON list of contacts")
+    draft.add_argument(
+        "--providers", type=Path, required=True, help="JSON fixture of demo providers"
+    )
+    draft.add_argument("--window", type=int, default=30, help="freshness window in days")
+    draft.add_argument("--db", type=Path, default=None, help="audit database path")
     sub.add_parser("approve", help="review the approval queue (M4)")
     return parser
 
@@ -87,6 +95,42 @@ def main(argv: list[str] | None = None) -> int:
         if found:
             label += f" (${total / found:.2f} per found email)"
         print(label)
+        return 0
+    if args.command == "draft":
+        from engine.icp import DRAFT_THRESHOLD
+
+        run = run_scoring(DemoFileSource(args.signals), window_days=args.window)
+        qualified = {f.company: f for f in run.scores if f.points >= DRAFT_THRESHOLD}
+        providers = load_demo_providers(args.providers)
+        rows = _json.loads(args.contacts.read_text())
+        drafter = OfflineProvider()
+        dconn = open_db(args.db) if args.db is not None else None
+        made = 0
+        for row in rows:
+            fit = qualified.get(row["company"])
+            if fit is None:
+                continue
+            contact = Contact(
+                name=row["name"], company=row["company"], title=row.get("title")
+            )
+            eresult = run_waterfall(contact, providers)
+            if eresult.contact.email is None:
+                continue
+            d = drafter.draft(eresult.contact, fit)
+            made += 1
+            print("=" * 72)
+            print(f"TO: {d.contact.email}  (fit {d.fit.points}, provider: {d.provider})")
+            print(f"SUBJECT: {d.subject}")
+            print()
+            print(d.body)
+            if dconn is not None:
+                log_event(
+                    dconn,
+                    "draft_created",
+                    f"to={d.contact.email} fit={d.fit.points} provider={d.provider}",
+                )
+        print("=" * 72)
+        print(f"{made} draft(s) created with provider '{drafter.name}' - {OFFLINE_LABEL}")
         return 0
     if args.command is None:
         parser.print_help()

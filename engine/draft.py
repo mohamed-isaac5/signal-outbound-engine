@@ -19,6 +19,7 @@ class Draft:
     subject: str
     body: str
     fit: FitScore
+    provider: str = "unknown"
 
     def __post_init__(self) -> None:
         if not self.subject.strip() or not self.body.strip():
