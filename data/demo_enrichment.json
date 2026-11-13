@@ -1,0 +1,28 @@
+{
+  "providers": [
+    {
+      "name": "apollo-demo",
+      "unit_cost_usd": 0.06,
+      "data": {
+        "Sara Adel@Northwind Traders": {
+          "email": "sara.adel@northwind-demo.example",
+          "status": "verified"
+        },
+        "Omar Fathy@Globex": {
+          "email": "omar.fathy@globex-demo.example",
+          "status": "risky"
+        }
+      }
+    },
+    {
+      "name": "clay-demo",
+      "unit_cost_usd": 0.12,
+      "data": {
+        "Mona Samir@Acme Corp": {
+          "email": "mona.samir@acme-demo.example",
+          "status": "verified"
+        }
+      }
+    }
+  ]
+}

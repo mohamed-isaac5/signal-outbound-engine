@@ -36,6 +36,7 @@ signals and points that produced it.
 ```bash
 pip install -e .
 soe score --source data/demo_signals.json
+soe enrich --contacts data/demo_contacts.json --providers data/demo_enrichment.json
 ```
 
 The fixture is labeled demo data (fictional companies); live connectors plug
@@ -45,7 +46,7 @@ into the same `SignalSource` protocol.
 
 - [x] M0 - scaffold, contracts, tests, CI
 - [x] M1 - signal connectors + scoring runs
-- [ ] M2 - enrichment waterfall (real providers)
+- [x] M2 - enrichment waterfall (demo providers live; real providers plug into the same protocol)
 - [ ] M3 - LLM drafting (Anthropic)
 - [ ] M4 - approval queue + audit trail UI
 - [ ] M5 - case-study README + public release

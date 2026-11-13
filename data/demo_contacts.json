@@ -1,0 +1,22 @@
+[
+  {
+    "name": "Sara Adel",
+    "company": "Northwind Traders",
+    "title": "VP Sales"
+  },
+  {
+    "name": "Omar Fathy",
+    "company": "Globex",
+    "title": "RevOps Lead"
+  },
+  {
+    "name": "Mona Samir",
+    "company": "Acme Corp",
+    "title": "Head of Growth"
+  },
+  {
+    "name": "Karim Nabil",
+    "company": "Initech",
+    "title": "CTO"
+  }
+]
