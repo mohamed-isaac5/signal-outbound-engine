@@ -2,49 +2,49 @@
   {
     "company": "Northwind Traders",
     "type": "hiring",
-    "observed_at": "2026-11-10T14:02:20.204058+00:00",
+    "observed_at": "2026-11-10T14:52:02.589792+00:00",
     "source": "demo-file",
     "detail": "Hiring 2 SDRs (demo)"
   },
   {
     "company": "Northwind Traders",
     "type": "funding",
-    "observed_at": "2026-11-04T14:02:20.204058+00:00",
+    "observed_at": "2026-11-04T14:52:02.589792+00:00",
     "source": "demo-file",
     "detail": "Series A announced (demo)"
   },
   {
     "company": "Acme Corp",
     "type": "intent",
-    "observed_at": "2026-11-08T14:02:20.204058+00:00",
+    "observed_at": "2026-11-08T14:52:02.589792+00:00",
     "source": "demo-file",
     "detail": "Pricing-page visits spiked (demo)"
   },
   {
     "company": "Globex",
     "type": "tech_change",
-    "observed_at": "2026-11-01T14:02:20.204058+00:00",
+    "observed_at": "2026-11-01T14:52:02.589792+00:00",
     "source": "demo-file",
     "detail": "Added a new CRM (demo)"
   },
   {
     "company": "Globex",
     "type": "hiring",
-    "observed_at": "2026-10-24T14:02:20.204058+00:00",
+    "observed_at": "2026-10-24T14:52:02.589792+00:00",
     "source": "demo-file",
     "detail": "Hiring a RevOps lead (demo)"
   },
   {
     "company": "Initech",
     "type": "leadership_change",
-    "observed_at": "2026-11-06T14:02:20.204058+00:00",
+    "observed_at": "2026-11-06T14:52:02.589792+00:00",
     "source": "demo-file",
     "detail": "New VP Sales (demo)"
   },
   {
     "company": "Umbrella Labs",
     "type": "funding",
-    "observed_at": "2026-09-14T14:02:20.204058+00:00",
+    "observed_at": "2026-09-14T14:52:02.589792+00:00",
     "source": "demo-file",
     "detail": "Seed round, stale (demo)"
   }

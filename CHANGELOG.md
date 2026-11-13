@@ -4,6 +4,26 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-11-13
+
+### Added
+- ICP as a business config file (`icp.toml`): `soe icp setup` asks guided
+  questions and writes it, `soe icp show` displays what scoring uses, and
+  `soe icp edit` changes one field. A shipped `data/icp.example.toml`
+  (mid-market B2B SaaS) keeps a cold clone runnable, with a printed note.
+- Scoring uses the ICP two published ways: companies outside it are excluded
+  with the stated reason (industry, size, country) and cannot route to
+  drafting; companies inside it earn closeness points (+10 industry, +5 size,
+  +5 country) itemized in the score breakdown. Optional per-ICP signal-weight
+  overrides. Unknown attributes never exclude and never boost.
+- Persona filtering: contacts whose title doesn't match the ICP target roles
+  are skipped with the stated reason (token-subset matching; unknown titles
+  pass).
+- `--icp PATH` flag on run/guide/score/draft/demo; company metadata fixture
+  `data/demo_companies.json`; the score table shows `excluded` routes and a
+  summary line naming each excluded company and why. ADR-0006.
+- Conditional `tomli` dependency for Python < 3.11 (stdlib tomllib on 3.11+).
+
 ## [1.3.0] - 2026-11-13
 
 ### Added

@@ -37,7 +37,7 @@ pip install -e ".[dev]"        # engine + test/lint tooling
 **Verify the install** (about a second):
 
 ```bash
-pytest -q     # 106 tests, all offline
+pytest -q     # 163 tests, all offline
 soe demo      # the whole chain, narrated, on labeled demo data
 ```
 
@@ -148,6 +148,32 @@ the freshness window (default 30 days) stop counting. Every draft keeps its
 score breakdown (`reasons`), so any message traces back to the exact signals
 and points that produced it.
 
+### Your ICP (ideal customer profile)
+
+Who you sell to is a business decision, so it lives in a config file you own -
+`icp.toml` - not in code. The engine never guesses it:
+
+```bash
+soe icp setup   # guided questions, writes icp.toml
+soe icp show    # what scoring currently uses
+soe icp edit    # change one field
+```
+
+The ICP declares industries, company-size range, countries, target job titles,
+optional signal-weight overrides, and industries to exclude. It affects scoring
+two ways, both printed in the score breakdown:
+
+- **Filter:** a company outside the ICP is excluded with the stated reason
+  (`outside ICP - industry 'retail' not in ICP`) and cannot route to drafting,
+  no matter how strong its signals. Contacts whose title doesn't match the
+  target roles are skipped the same way. Unknown attributes never exclude.
+- **Boost:** a company inside the ICP earns published closeness points -
+  +10 industry match, +5 size in range, +5 country match.
+
+No `icp.toml` yet? A fresh clone runs against the shipped example
+(`data/icp.example.toml`, mid-market B2B SaaS) and says so, so the demo works
+immediately and the ICP is one `soe icp setup` away.
+
 ## Drafting: honest by default
 
 Drafting is provider-agnostic. The default provider is **offline and
@@ -189,7 +215,7 @@ recorded as ADRs in [ARCHITECTURE.md](ARCHITECTURE.md).
 ## Principles
 
 - **Deterministic core.** Scoring, waterfall order, queue rules: pure functions
-  with tests. CI runs ruff, mypy --strict and pytest (106 tests) on 3.11/3.12.
+  with tests. CI runs ruff, mypy --strict and pytest (163 tests) on 3.11/3.12.
 - **Honesty over coverage.** A field the providers cannot find stays `null`.
   The engine never invents data to fill a gap - see Karim above.
 - **Human gate.** Drafts wait in an approval queue. A named reviewer approves

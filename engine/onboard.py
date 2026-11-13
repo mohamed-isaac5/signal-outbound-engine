@@ -18,6 +18,7 @@ from engine.connectors import DemoFileSource
 from engine.enrich import Contact, run_waterfall
 from engine.export import export_approved
 from engine.icp import DRAFT_THRESHOLD
+from engine.icp_config import ICP, CompanyProfile, load_companies, role_matches
 from engine.llm import OFFLINE_LABEL, OfflineProvider
 from engine.providers_demo import load_demo_providers
 from engine.runner import audit_run, render_table, run_scoring
@@ -27,6 +28,7 @@ DATA_DIR = Path("data")
 SIGNALS = DATA_DIR / "demo_signals.json"
 CONTACTS = DATA_DIR / "demo_contacts.json"
 PROVIDERS = DATA_DIR / "demo_enrichment.json"
+COMPANIES = DATA_DIR / "demo_companies.json"
 DB = Path("run.db")
 OUT = Path("approved.csv")
 
@@ -48,7 +50,7 @@ def _ask(prompt: str) -> str:
 
 def ensure_fixtures() -> bool:
     """Generate demo fixtures when missing. Returns True when it generated."""
-    if all(p.exists() for p in (SIGNALS, CONTACTS, PROVIDERS)):
+    if all(p.exists() for p in (SIGNALS, CONTACTS, PROVIDERS, COMPANIES)):
         return False
     print("No demo data found - generating fresh demo data (timestamps relative to now).")
     for path in demo_fixtures.write_all(DATA_DIR):
@@ -58,18 +60,28 @@ def ensure_fixtures() -> bool:
 
 
 def missing_inputs() -> list[Path]:
-    return [p for p in (SIGNALS, CONTACTS, PROVIDERS) if not p.exists()]
+    return [p for p in (SIGNALS, CONTACTS, PROVIDERS, COMPANIES) if not p.exists()]
 
 
-def _score_step(conn: sqlite3.Connection | None = None) -> int:
+def _score_step(
+    conn: sqlite3.Connection | None = None,
+    icp: ICP | None = None,
+    companies: dict[str, CompanyProfile] | None = None,
+) -> int:
     """Score and narrate. Returns the number of qualified companies."""
-    run = run_scoring(DemoFileSource(SIGNALS))
+    run = run_scoring(DemoFileSource(SIGNALS), icp=icp, companies=companies)
     print(render_table(run))
     qualified = sum(1 for f in run.scores if f.qualifies)
-    print(
-        f"-> {qualified} of {len(run.scores)} companies are over the "
-        f"{DRAFT_THRESHOLD}-point bar and route to drafting."
-    )
+    if icp is not None:
+        print(
+            f"-> {qualified} of {len(run.scores)} companies qualify "
+            f"({DRAFT_THRESHOLD}+ points, inside the ICP)."
+        )
+    else:
+        print(
+            f"-> {qualified} of {len(run.scores)} companies are over the "
+            f"{DRAFT_THRESHOLD}-point bar and route to drafting."
+        )
     if conn is not None:
         audit_run(conn, run)
     return qualified
@@ -110,23 +122,37 @@ def _enrich_step(conn: sqlite3.Connection | None = None) -> tuple[int, int, floa
     return found, len(rows), total
 
 
-def _draft_step(conn: sqlite3.Connection) -> int:
+def _draft_step(
+    conn: sqlite3.Connection,
+    icp: ICP | None = None,
+    companies: dict[str, CompanyProfile] | None = None,
+) -> int:
     """Draft for qualified fits and enqueue. Returns drafts written."""
-    run = run_scoring(DemoFileSource(SIGNALS))
-    qualified = {f.company: f for f in run.scores if f.qualifies}
+    run = run_scoring(DemoFileSource(SIGNALS), icp=icp, companies=companies)
+    fits = {f.company: f for f in run.scores}
     providers = load_demo_providers(PROVIDERS)
     rows = json.loads(CONTACTS.read_text())
     drafter = OfflineProvider()
     made = 0
     for row in rows:
-        fit = qualified.get(row["company"])
-        if fit is None:
-            print(f"  skipped {row['name']} ({row['company']}): below the fit bar")
+        fit = fits.get(row["company"])
+        if fit is None or not fit.qualifies:
+            if fit is not None and fit.exclusion:
+                reason = f"outside ICP - {fit.exclusion}"
+            else:
+                reason = "below the fit bar"
+            print(f"  skipped {row['name']} ({row['company']}): {reason}")
             continue
         contact = Contact(name=row["name"], company=row["company"], title=row.get("title"))
         eresult = run_waterfall(contact, providers)
         if eresult.contact.email is None:
             print(f"  skipped {contact.name} ({contact.company}): no email found")
+            continue
+        if icp is not None and not role_matches(contact.title, icp.target_roles):
+            print(
+                f"  skipped {contact.name} ({contact.company}): "
+                f"title '{contact.title or 'unknown'}' outside ICP target roles"
+            )
             continue
         draft = drafter.draft(eresult.contact, fit)
         outcome = enqueue(conn, f"{draft.contact.company}:{draft.contact.email}", draft)
@@ -237,15 +263,22 @@ def print_summary(out: Path, count: int, db: Path, already_exported: bool = Fals
     print(f"Why anything happened: soe audit   (every decision and event, in {db})")
 
 
-def run_pipeline(db: Path, out: Path) -> int:
+def run_pipeline(
+    db: Path,
+    out: Path,
+    icp: ICP | None = None,
+    companies: dict[str, CompanyProfile] | None = None,
+) -> int:
     """`soe run`: the whole happy path, zero flags, narrated. Non-interactive."""
     print("SOE RUN - the whole pipeline start to finish. Offline, no keys, nothing sends.")
     print()
     ensure_fixtures()
+    if companies is None:
+        companies = load_companies(COMPANIES)
     conn = open_db(db)
 
     print("Step 1/3 - SCORING: which companies show fresh buying signals right now?")
-    _score_step(conn)
+    _score_step(conn, icp=icp, companies=companies)
     print()
 
     print("Step 2/3 - ENRICHMENT: find each contact's email.")
@@ -253,7 +286,7 @@ def run_pipeline(db: Path, out: Path) -> int:
     print()
 
     print("Step 3/3 - DRAFTING: write the emails. Each one waits for YOUR approval.")
-    _draft_step(conn)
+    _draft_step(conn, icp=icp, companies=companies)
     print()
 
     waiting = len(pending(conn))
@@ -268,7 +301,14 @@ def run_pipeline(db: Path, out: Path) -> int:
     return 0
 
 
-def run_guide(db: Path, out: Path, assume_yes: bool, reviewer: str) -> int:
+def run_guide(
+    db: Path,
+    out: Path,
+    assume_yes: bool,
+    reviewer: str,
+    icp: ICP | None = None,
+    companies: dict[str, CompanyProfile] | None = None,
+) -> int:
     """`soe guide`: the interactive walkthrough, plain language at every step."""
     print("Welcome to the guided run. About two minutes, five steps.")
     print("Everything here is offline demo data: no API keys, no spend,")
@@ -280,13 +320,17 @@ def run_guide(db: Path, out: Path, assume_yes: bool, reviewer: str) -> int:
         if ensure_fixtures():
             print("That was the demo data - fictional companies, labeled everywhere.")
             print()
+        if companies is None:
+            companies = load_companies(COMPANIES)
 
         print("Step 1/4 - SCORING")
         print("We look for fresh buying signals (hiring, funding, tech changes) and")
         print("score each company against a published formula. 50+ points means the")
         print("account is worth an email. Here is the scoreboard:")
+        if icp is not None:
+            print("Your ICP also boosts accounts that fit and filters out ones that don't.")
         print()
-        qualified = _score_step()
+        qualified = _score_step(icp=icp, companies=companies)
         print()
         print(f"So {qualified} companies qualified. Next we need their emails.")
         if not assume_yes:
@@ -311,7 +355,7 @@ def run_guide(db: Path, out: Path, assume_yes: bool, reviewer: str) -> int:
         print("goes into YOUR review queue - it cannot send itself. Writing:")
         print()
         conn = open_db(db)
-        _draft_step(conn)
+        _draft_step(conn, icp=icp, companies=companies)
         print()
         print("Step 4/4 - YOUR REVIEW (the human gate)")
         print("Read each email below and approve or reject it. Rejections ask for a")

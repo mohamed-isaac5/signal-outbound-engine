@@ -74,8 +74,18 @@ def providers() -> dict[str, object]:
     }
 
 
+def companies() -> list[dict[str, object]]:
+    """Company metadata for ICP matching: industry, size, country."""
+    return [
+        {"name": "Northwind Traders", "industry": "saas", "size": 220, "country": "US"},
+        {"name": "Globex", "industry": "saas", "size": 80, "country": "EG"},
+        {"name": "Acme Corp", "industry": "retail", "size": 5000, "country": "US"},
+        {"name": "Initech", "industry": "software", "size": 15, "country": "US"},
+    ]
+
+
 def write_all(directory: Path | None = None) -> list[Path]:
-    """Write all three demo fixtures with run-relative timestamps."""
+    """Write all demo fixtures with run-relative timestamps."""
     if directory is None:
         directory = DATA_DIR
     directory.mkdir(parents=True, exist_ok=True)
@@ -85,6 +95,7 @@ def write_all(directory: Path | None = None) -> list[Path]:
         ("demo_signals.json", signals(now)),
         ("demo_contacts.json", contacts()),
         ("demo_enrichment.json", providers()),
+        ("demo_companies.json", companies()),
     ):
         path = directory / name
         path.write_text(json.dumps(payload, indent=2) + "\n")

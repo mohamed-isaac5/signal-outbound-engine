@@ -101,3 +101,27 @@ changing them a deliberate act.
 
 **Cost.** The formula is simple and linear by design. Sophisticated
 scoring would buy marginal accuracy and cost explainability.
+
+## ADR-0006: The ICP is a business config file, never a code default
+
+**Decision.** The ideal customer profile (industries, company size, countries,
+target roles, optional signal-weight overrides, exclusions) lives in
+`icp.toml`, written by `soe icp setup` through guided questions and editable
+with `soe icp edit`. Resolution order: `--icp` flag, then `./icp.toml`, then
+the shipped `data/icp.example.toml` (with a printed note). Scoring applies it
+in two published ways: exclusion with a stated reason, and closeness points
+(+10/+5/+5) that appear in the score breakdown. Unknown attributes never
+exclude and never boost.
+
+**Why.** Who we sell to is a business decision that changes with the market;
+hard-coding it means a deploy to change a territory, and a silent default
+means selling to someone you never chose. A config file the user writes -
+through questions, not by guessing TOML - keeps the decision explicit,
+diffable, and version-controllable. The shipped example keeps a cold clone
+runnable while making clear it is an example.
+
+**Cost.** Exclusion is a veto, so a wrong ICP silently shrinks the pipeline.
+Mitigation: every exclusion is printed with its reason in every score table,
+and `soe icp show` always shows what is active. Company metadata is a fixture
+like the rest of the demo data; live CRM attributes plug into the same
+`CompanyProfile` shape.

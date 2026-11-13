@@ -9,6 +9,7 @@ from pathlib import Path
 from engine import __version__
 from engine.connectors import DemoFileSource
 from engine.enrich import Contact, run_waterfall
+from engine.icp_config import ICP, CompanyProfile
 from engine.llm import OFFLINE_LABEL, AnthropicProvider, OfflineProvider
 from engine.providers_demo import load_demo_providers
 from engine.runner import audit_run, render_table, run_scoring
@@ -48,6 +49,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run_cmd.add_argument("--db", type=Path, default=onboard.DB, help="queue/audit database path")
     run_cmd.add_argument("--out", type=Path, default=onboard.OUT, help="CSV written at export time")
+    run_cmd.add_argument(
+        "--icp",
+        type=Path,
+        default=None,
+        help="ICP file (default: icp.toml, then the shipped example)",
+    )
 
     guide = sub.add_parser(
         "guide",
@@ -69,6 +76,12 @@ def build_parser() -> argparse.ArgumentParser:
     guide.add_argument(
         "--reviewer", default=None, help="whose name the approvals record (default: $USER)"
     )
+    guide.add_argument(
+        "--icp",
+        type=Path,
+        default=None,
+        help="ICP file (default: icp.toml, then the shipped example)",
+    )
 
     score = sub.add_parser(
         "score",
@@ -85,6 +98,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     score.add_argument("--window", type=int, default=30, help="freshness window in days")
     score.add_argument("--db", type=Path, default=None, help="audit database path")
+    score.add_argument(
+        "--icp",
+        type=Path,
+        default=None,
+        help="ICP file (default: icp.toml, then the shipped example)",
+    )
 
     enrich = sub.add_parser(
         "enrich",
@@ -121,6 +140,12 @@ def build_parser() -> argparse.ArgumentParser:
     draft.add_argument("--window", type=int, default=30, help="freshness window in days")
     draft.add_argument("--db", type=Path, default=onboard.DB, help="audit database path")
     draft.add_argument(
+        "--icp",
+        type=Path,
+        default=None,
+        help="ICP file (default: icp.toml, then the shipped example)",
+    )
+    draft.add_argument(
         "--provider",
         choices=["offline", "anthropic"],
         default="offline",
@@ -156,6 +181,27 @@ def build_parser() -> argparse.ArgumentParser:
     demo.add_argument(
         "--db", type=Path, default=Path("demo.db"), help="queue/audit database path"
     )
+    demo.add_argument(
+        "--icp",
+        type=Path,
+        default=None,
+        help="ICP file (default: icp.toml, then the shipped example)",
+    )
+    icp_cmd = sub.add_parser(
+        "icp",
+        help="your Ideal Customer Profile: show it, set it up, or edit one field",
+        epilog=(
+            "examples:\n"
+            "  soe icp show     the ICP scoring currently uses\n"
+            "  soe icp setup    answer a few questions, writes icp.toml\n"
+            "  soe icp edit     change one field without redoing setup"
+        ),
+        formatter_class=examples,
+    )
+    icp_sub = icp_cmd.add_subparsers(dest="icp_command")
+    icp_sub.add_parser("show", help="show the ICP scoring currently uses")
+    icp_sub.add_parser("setup", help="guided questions, writes icp.toml")
+    icp_sub.add_parser("edit", help="change one field of icp.toml")
     approve = sub.add_parser(
         "approve",
         help="review the approval queue (interactive by default)",
@@ -178,6 +224,35 @@ def build_parser() -> argparse.ArgumentParser:
     )
     approve.add_argument("--reason", default=None, help="required when rejecting")
     return parser
+
+
+def _load_icp_or_report(flag_path: Path | None) -> tuple[ICP | None, str] | None:
+    """Resolve the ICP; on a config error print it plainly and return None."""
+    from engine.icp_config import ICPError, resolve_icp
+
+    try:
+        return resolve_icp(flag_path)
+    except ICPError as exc:
+        print(exc)
+        print()
+        print("Fix the file, or make a fresh one: soe icp setup")
+        return None
+
+
+def _icp_and_companies(
+    flag_path: Path | None, companies_path: Path
+) -> tuple[ICP | None, dict[str, CompanyProfile]] | None:
+    """ICP plus company metadata for the scoring commands; None = error already printed."""
+    from engine.icp_config import load_companies
+
+    resolved = _load_icp_or_report(flag_path)
+    if resolved is None:
+        return None
+    icp, note = resolved
+    if note:
+        print(note)
+        print()
+    return (icp, load_companies(companies_path))
 
 
 def _missing_inputs(paths: list[Path]) -> int:
@@ -205,6 +280,7 @@ def _welcome() -> None:
     print("Then:")
     print("  soe approve  read each drafted email, approve or reject it")
     print("  soe export   write approved.csv, ready to upload to Smartlead/Instantly")
+    print("  soe icp      define who you sell to (industries, size, countries, roles)")
     print()
     print("Every command works with zero flags on the demo data.")
     print("All commands and options: soe --help")
@@ -219,15 +295,38 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "run":
         from engine.onboard import run_pipeline
 
-        return run_pipeline(args.db, args.out)
+        resolved = _load_icp_or_report(args.icp)
+        if resolved is None:
+            return 2
+        icp, note = resolved
+        if note:
+            print(note)
+            print()
+        # companies load inside run_pipeline, after fixtures are generated
+        return run_pipeline(args.db, args.out, icp=icp)
     if args.command == "guide":
         from engine.onboard import default_reviewer, run_guide
 
-        return run_guide(args.db, args.out, args.yes, args.reviewer or default_reviewer())
+        resolved = _load_icp_or_report(args.icp)
+        if resolved is None:
+            return 2
+        icp, note = resolved
+        if note:
+            print(note)
+            print()
+        # companies load inside run_guide, after fixtures are generated
+        return run_guide(args.db, args.out, args.yes, args.reviewer or default_reviewer(), icp=icp)
     if args.command == "score":
         if not args.source.exists():
             return _missing_inputs([args.source])
-        result = run_scoring(DemoFileSource(args.source), window_days=args.window)
+        from engine.onboard import COMPANIES
+
+        ctx = _icp_and_companies(args.icp, COMPANIES)
+        if ctx is None:
+            return 2
+        result = run_scoring(
+            DemoFileSource(args.source), window_days=args.window, icp=ctx[0], companies=ctx[1]
+        )
         print(render_table(result))
         if args.db is not None:
             conn = open_db(args.db)
@@ -280,8 +379,17 @@ def main(argv: list[str] | None = None) -> int:
 
         if not args.signals.exists() or not args.contacts.exists() or not args.providers.exists():
             return _missing_inputs([args.signals, args.contacts, args.providers])
-        run = run_scoring(DemoFileSource(args.signals), window_days=args.window)
-        qualified = {f.company: f for f in run.scores if f.points >= DRAFT_THRESHOLD}
+        from engine.icp_config import role_matches
+        from engine.onboard import COMPANIES
+
+        ctx = _icp_and_companies(args.icp, COMPANIES)
+        if ctx is None:
+            return 2
+        icp, companies = ctx
+        run = run_scoring(
+            DemoFileSource(args.signals), window_days=args.window, icp=icp, companies=companies
+        )
+        fits = {f.company: f for f in run.scores}
         providers = load_demo_providers(args.providers)
         rows = json.loads(args.contacts.read_text())
         drafter = (
@@ -290,12 +398,15 @@ def main(argv: list[str] | None = None) -> int:
         dconn = open_db(args.db) if args.db is not None else None
         made = 0
         for row in rows:
-            fit = qualified.get(row["company"])
-            if fit is None:
-                print(
-                    f"skipped {row['name']} ({row['company']}): "
-                    f"no qualified fit (below {DRAFT_THRESHOLD} points or no fresh signals)"
-                )
+            fit = fits.get(row["company"])
+            if fit is None or not fit.qualifies:
+                if fit is not None and fit.exclusion:
+                    reason = f"outside ICP - {fit.exclusion}"
+                else:
+                    reason = (
+                        f"no qualified fit (below {DRAFT_THRESHOLD} points or no fresh signals)"
+                    )
+                print(f"skipped {row['name']} ({row['company']}): {reason}")
                 continue
             contact = Contact(
                 name=row["name"], company=row["company"], title=row.get("title")
@@ -305,6 +416,12 @@ def main(argv: list[str] | None = None) -> int:
                 print(
                     f"skipped {contact.name} ({contact.company}): "
                     "no email found by any provider - unknown stays unknown"
+                )
+                continue
+            if icp is not None and not role_matches(contact.title, icp.target_roles):
+                print(
+                    f"skipped {contact.name} ({contact.company}): "
+                    f"title '{contact.title or 'unknown'}' outside ICP target roles"
                 )
                 continue
             d = drafter.draft(eresult.contact, fit)
@@ -443,16 +560,38 @@ def main(argv: list[str] | None = None) -> int:
         for created_at, event, detail in events:
             print(f"    {created_at}  {event}: {detail}")
         return 0
+    if args.command == "icp":
+        from engine.icp_config import ICP_FILE, ICPError, render_icp, resolve_icp
+
+        if args.icp_command in (None, "show"):
+            try:
+                shown, note = resolve_icp(None)
+            except ICPError as exc:
+                print(exc)
+                return 2
+            if shown is None:
+                print("No ICP yet - the engine runs without ICP filtering.")
+                print("Create one: soe icp setup")
+                return 0
+            print(render_icp(shown, note or str(ICP_FILE)))
+            print()
+            print("Change it: soe icp edit   Start over: soe icp setup")
+            return 0
+        if args.icp_command == "setup":
+            return _icp_setup(ICP_FILE)
+        if args.icp_command == "edit":
+            return _icp_edit(ICP_FILE)
     if args.command == "demo":
-        return run_demo(args.data_dir, args.db)
+        return run_demo(args.data_dir, args.db, args.icp)
     if args.command is None:
         _welcome()
     return 0
 
 
-def run_demo(data_dir: Path, db: Path) -> int:
+def run_demo(data_dir: Path, db: Path, icp_flag: Path | None = None) -> int:
     """One command, whole chain, narrated. Offline, no keys, no sends."""
     from engine.approve import enqueue, pending
+    from engine.icp_config import role_matches
 
     signals_path = data_dir / "demo_signals.json"
     contacts_path = data_dir / "demo_contacts.json"
@@ -462,14 +601,23 @@ def run_demo(data_dir: Path, db: Path) -> int:
             print(f"missing {path} - run: python -m engine.demo_fixtures")
             return 2
 
+    ctx = _icp_and_companies(icp_flag, data_dir / "demo_companies.json")
+    if ctx is None:
+        return 2
+    icp, companies = ctx
+
     print("SIGNAL-OUTBOUND-ENGINE DEMO - offline, labeled demo data, nothing sends")
     print()
     print("== 1/4 SCORING - fresh buying signals against the published ICP formula")
-    run = run_scoring(DemoFileSource(signals_path))
+    run = run_scoring(DemoFileSource(signals_path), icp=icp, companies=companies)
     print(render_table(run))
-    qualified = {f.company: f for f in run.scores if f.qualifies}
+    fits = {f.company: f for f in run.scores}
+    qualified = {c: f for c, f in fits.items() if f.qualifies}
     print()
-    print(f"-> {len(qualified)} account(s) over the 50-point bar route to drafting")
+    if icp is not None:
+        print(f"-> {len(qualified)} account(s) qualify (50+ points, inside the ICP)")
+    else:
+        print(f"-> {len(qualified)} account(s) over the 50-point bar route to drafting")
     print()
     print("== 2/4 ENRICHMENT - costed waterfall, unknown stays unknown")
     providers = load_demo_providers(providers_path)
@@ -488,12 +636,22 @@ def run_demo(data_dir: Path, db: Path) -> int:
     conn = open_db(db)
     made = 0
     for company, eresult in enriched.items():
-        fit = qualified.get(company)
-        if fit is None:
-            print(f"  skipped {eresult.contact.name} ({company}): below the fit bar")
+        fit = fits.get(company)
+        if fit is None or not fit.qualifies:
+            if fit is not None and fit.exclusion:
+                reason = f"outside ICP - {fit.exclusion}"
+            else:
+                reason = "below the fit bar"
+            print(f"  skipped {eresult.contact.name} ({company}): {reason}")
             continue
         if eresult.contact.email is None:
             print(f"  skipped {eresult.contact.name} ({company}): no email found")
+            continue
+        if icp is not None and not role_matches(eresult.contact.title, icp.target_roles):
+            print(
+                f"  skipped {eresult.contact.name} ({company}): "
+                f"title '{eresult.contact.title or 'unknown'}' outside ICP target roles"
+            )
             continue
         drafter = OfflineProvider()
         d = drafter.draft(eresult.contact, fit)
@@ -511,6 +669,193 @@ def run_demo(data_dir: Path, db: Path) -> int:
     print(f"Next: soe approve --db {db} --list   (then approve or reject each)")
     print(f"Then: soe export  --db {db} --out approved.csv   (to Smartlead/Instantly)")
     print(f"Why:  soe audit   --db {db} --id '<draft-id>'   (full trace)")
+    return 0
+
+
+def _ask_with_default(prompt: str, default: str) -> str:
+    from engine.onboard import _ask
+
+    answer = _ask(f"{prompt} [{default}]: ").strip()
+    return answer or default
+
+
+def _ask_list(prompt: str, default: tuple[str, ...]) -> tuple[str, ...]:
+    shown = ", ".join(default) if default else "none"
+    raw = _ask_with_default(f"{prompt} (comma-separated)", shown)
+    if raw.strip().lower() in ("none", "-"):
+        return ()
+    return tuple(x.strip() for x in raw.split(",") if x.strip())
+
+
+def _ask_int(prompt: str, default: int | None) -> int | None:
+    from engine.onboard import _ask
+
+    shown = "none" if default is None else str(default)
+    while True:
+        raw = _ask(f"{prompt} [{shown}]: ").strip()
+        if not raw:
+            return default
+        if raw.lower() in ("none", "no cap", "-"):
+            return None
+        try:
+            value = int(raw)
+        except ValueError:
+            print("Please type a whole number.")
+            continue
+        if value < 0:
+            print("Please type zero or more.")
+            continue
+        return value
+
+
+def _icp_setup(path: Path) -> int:
+    """Guided questions -> icp.toml. Defaults come from the shipped example."""
+    from engine import onboard
+    from engine.icp import SIGNAL_WEIGHTS
+    from engine.icp_config import EXAMPLE_FILE, ICP, ICPError, load_icp, write_icp
+    from engine.signals import SignalType
+
+    base: ICP | None = None
+    if EXAMPLE_FILE.exists():
+        try:
+            base = load_icp(EXAMPLE_FILE)
+        except ICPError:
+            base = None
+    if base is None:
+        base = ICP(
+            name="My ICP",
+            industries=("saas",),
+            size_min=10,
+            size_max=1000,
+            countries=("US",),
+            target_roles=("vp sales",),
+            signal_weights=None,
+            exclude_industries=(),
+        )
+    print("Set up your Ideal Customer Profile. Press Enter to keep the [default].")
+    print()
+    try:
+        name = _ask_with_default("Who is this ICP for? (a short name)", base.name)
+        industries = _ask_list("Industries you sell to", base.industries)
+        size_min = _ask_int("Company size - minimum employees", base.size_min)
+        size_max = _ask_int("Company size - maximum employees", base.size_max)
+        countries = _ask_list("Countries you sell to (2-letter codes)", base.countries)
+        roles = _ask_list("Job titles you target", base.target_roles)
+        exclude = _ask_list("Industries to never contact", base.exclude_industries)
+        weights = None
+        defaults = base.signal_weights or {t.value: SIGNAL_WEIGHTS[t] for t in SignalType}
+        tune = _ask_with_default(
+            "Tune signal weights (which signals matter most to you)? y/N", "N"
+        ).lower()
+        if tune in ("y", "yes"):
+            weights = {}
+            for signal_type in SignalType:
+                value = _ask_int(
+                    f"  points for {signal_type.value}", defaults[signal_type.value]
+                )
+                weights[signal_type.value] = value if value is not None else 0
+        if size_min is not None and size_max is not None and size_min > size_max:
+            print("Minimum size can't be bigger than maximum - nothing written.")
+            return 2
+        icp = ICP(
+            name=name,
+            industries=industries,
+            size_min=size_min,
+            size_max=size_max,
+            countries=countries,
+            target_roles=roles,
+            signal_weights=weights,
+            exclude_industries=exclude,
+        )
+    except onboard.NonInteractive:
+        print("No interactive terminal, so I can't ask the setup questions.")
+        print(f"Instead: cp {EXAMPLE_FILE} icp.toml  and edit it by hand.")
+        return 2
+    write_icp(icp, path)
+    print()
+    print(f"Wrote {path} - this is now your ICP.")
+    print("Check it:  soe icp show")
+    print("Next:      soe run   (scoring now uses your ICP)")
+    return 0
+
+
+def _icp_edit(path: Path) -> int:
+    """Change one field of an existing icp.toml."""
+    from dataclasses import replace
+
+    from engine import onboard
+    from engine.icp import SIGNAL_WEIGHTS
+    from engine.icp_config import ICPError, load_icp, render_icp, write_icp
+    from engine.onboard import _ask
+    from engine.signals import SignalType
+
+    if not path.exists():
+        print(f"No {path} here yet - create one first: soe icp setup")
+        return 2
+    try:
+        icp = load_icp(path)
+    except ICPError as exc:
+        print(exc)
+        print("Fix the file by hand, or start over: soe icp setup")
+        return 2
+    print(render_icp(icp, str(path)))
+    print()
+    fields = [
+        "name",
+        "industries",
+        "company size",
+        "countries",
+        "target roles",
+        "excluded industries",
+        "signal weights",
+    ]
+    for number, field in enumerate(fields, 1):
+        print(f"  {number}) {field}")
+    print("  0) cancel")
+    try:
+        choice = (_ask("Change which field? [0]: ").strip() or "0")
+        if choice == "0":
+            print("Nothing changed.")
+            return 0
+        if choice == "1":
+            icp = replace(icp, name=_ask_with_default("ICP name", icp.name))
+        elif choice == "2":
+            icp = replace(icp, industries=_ask_list("Industries you sell to", icp.industries))
+        elif choice == "3":
+            size_min = _ask_int("Minimum employees", icp.size_min)
+            size_max = _ask_int("Maximum employees", icp.size_max)
+            if size_min is not None and size_max is not None and size_min > size_max:
+                print("Minimum can't be bigger than maximum - nothing changed.")
+                return 2
+            icp = replace(icp, size_min=size_min, size_max=size_max)
+        elif choice == "4":
+            icp = replace(icp, countries=_ask_list("Countries you sell to", icp.countries))
+        elif choice == "5":
+            icp = replace(icp, target_roles=_ask_list("Job titles you target", icp.target_roles))
+        elif choice == "6":
+            icp = replace(
+                icp,
+                exclude_industries=_ask_list("Industries to never contact", icp.exclude_industries),
+            )
+        elif choice == "7":
+            current = icp.signal_weights or {t.value: SIGNAL_WEIGHTS[t] for t in SignalType}
+            weights = {}
+            for signal_type in SignalType:
+                value = _ask_int(
+                    f"points for {signal_type.value}", current[signal_type.value]
+                )
+                weights[signal_type.value] = value if value is not None else 0
+            icp = replace(icp, signal_weights=weights)
+        else:
+            print("Unknown choice - nothing changed.")
+            return 2
+    except onboard.NonInteractive:
+        print("No interactive terminal - edit icp.toml by hand instead.")
+        return 2
+    write_icp(icp, path)
+    print()
+    print(f"Updated {path}:")
+    print(render_icp(icp, str(path)))
     return 0
 
 

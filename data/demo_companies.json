@@ -1,0 +1,26 @@
+[
+  {
+    "name": "Northwind Traders",
+    "industry": "saas",
+    "size": 220,
+    "country": "US"
+  },
+  {
+    "name": "Globex",
+    "industry": "saas",
+    "size": 80,
+    "country": "EG"
+  },
+  {
+    "name": "Acme Corp",
+    "industry": "retail",
+    "size": 5000,
+    "country": "US"
+  },
+  {
+    "name": "Initech",
+    "industry": "software",
+    "size": 15,
+    "country": "US"
+  }
+]

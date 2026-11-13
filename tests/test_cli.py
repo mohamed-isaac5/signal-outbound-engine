@@ -307,8 +307,8 @@ def test_demo_runs_the_whole_chain(capsys, demo_dir, tmp_path) -> None:  # type:
     for section in ("1/4 SCORING", "2/4 ENRICHMENT", "3/4 DRAFTING", "4/4 THE HUMAN GATE"):
         assert section in out
     assert "No message was sent" in out
-    assert "skipped Mona Samir (Acme Corp): below the fit bar" in out
-    assert "skipped Karim Nabil (Initech): below the fit bar" in out
+    assert "skipped Mona Samir (Acme Corp): outside ICP - industry 'retail' not in ICP" in out
+    assert "skipped Karim Nabil (Initech): outside ICP - size 15 below ICP min 50" in out
     import sqlite3
 
     pending = sqlite3.connect(db).execute("SELECT count(*) FROM drafts WHERE status='pending'")

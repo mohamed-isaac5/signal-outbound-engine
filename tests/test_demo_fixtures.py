@@ -15,12 +15,13 @@ def test_generated_fixtures_are_fresh(tmp_path: Path) -> None:
     assert sum(1 for s in signals if fresh(s)) == 6
 
 
-def test_all_three_files_written(tmp_path: Path) -> None:
+def test_all_fixture_files_written(tmp_path: Path) -> None:
     written = write_all(tmp_path)
     assert {p.name for p in written} == {
         "demo_signals.json",
         "demo_contacts.json",
         "demo_enrichment.json",
+        "demo_companies.json",
     }
 
 

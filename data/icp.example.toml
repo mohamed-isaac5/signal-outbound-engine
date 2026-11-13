@@ -1,0 +1,23 @@
+# Example Ideal Customer Profile - mid-market B2B SaaS.
+# This ships with the repo so a fresh clone runs immediately.
+# Make your own with: soe icp setup   (or edit fields: soe icp edit)
+name = "Example: mid-market B2B SaaS sales teams"
+industries = ["saas", "software", "technology"]
+countries = ["US", "EG", "AE"]
+target_roles = ["vp sales", "head of growth", "sales director", "revops"]
+
+[company_size]
+min = 50
+max = 500
+
+# Signal weights: same values as the published defaults, shown here so you
+# can tune them (which signals matter most to YOUR business).
+[signal_weights]
+hiring = 30
+funding = 25
+tech_change = 20
+intent = 15
+leadership_change = 10
+
+[exclude]
+industries = ["government", "education"]

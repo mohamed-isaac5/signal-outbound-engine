@@ -10,3 +10,4 @@ build/
 .env
 *.db
 approved.csv
+.coverage
