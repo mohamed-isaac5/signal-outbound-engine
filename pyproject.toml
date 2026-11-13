@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "signal-outbound-engine"
-version = "0.5.0"
+version = "1.0.0"
 description = "Signal-driven outbound engine: capture buying signals, score against an ICP, enrich, draft, and approve - with a full audit trail."
 readme = "README.md"
 requires-python = ">=3.11"
