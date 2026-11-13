@@ -16,48 +16,136 @@ from engine.store import log_event, open_db
 
 
 def build_parser() -> argparse.ArgumentParser:
+    from engine import onboard
+
+    examples = argparse.RawDescriptionHelpFormatter
     parser = argparse.ArgumentParser(
         prog="soe",
-        description="Signal-driven outbound engine.",
+        description="Signal-driven outbound engine: buying signals in, approved outreach out.",
+        epilog=(
+            "Start here (no flags needed, works on offline demo data):\n"
+            "  soe run       the whole pipeline in one shot, with a summary at the end\n"
+            "  soe guide     same flow, but it explains every step and walks you through\n"
+            "  soe approve   read each drafted email, approve or reject it\n"
+            "  soe export    write approved.csv, ready to upload to Smartlead/Instantly\n"
+            "\n"
+            "Every command runs on the demo data with zero flags; flags override inputs."
+        ),
+        formatter_class=examples,
     )
     parser.add_argument("--version", action="store_true", help="print version and exit")
     sub = parser.add_subparsers(dest="command")
 
-    score = sub.add_parser("score", help="score signals against the ICP")
-    score.add_argument("--source", type=Path, required=True, help="JSON fixture of signals")
+    run_cmd = sub.add_parser(
+        "run",
+        help="the whole pipeline in one shot (best first command)",
+        epilog=(
+            "examples:\n"
+            "  soe run                     everything, on the demo data\n"
+            "  soe run --db my.db          keep the queue/audit in my.db"
+        ),
+        formatter_class=examples,
+    )
+    run_cmd.add_argument("--db", type=Path, default=onboard.DB, help="queue/audit database path")
+    run_cmd.add_argument("--out", type=Path, default=onboard.OUT, help="CSV written at export time")
+
+    guide = sub.add_parser(
+        "guide",
+        help="guided walkthrough: explains every step, you approve each draft",
+        epilog=(
+            "examples:\n"
+            "  soe guide                   interactive: pauses, you review each draft\n"
+            "  soe guide --yes             no pauses; approves every draft (demo use)"
+        ),
+        formatter_class=examples,
+    )
+    guide.add_argument("--db", type=Path, default=onboard.DB, help="queue/audit database path")
+    guide.add_argument("--out", type=Path, default=onboard.OUT, help="CSV written at export time")
+    guide.add_argument(
+        "--yes",
+        action="store_true",
+        help="no pauses; approve every draft (reviewer still named in the audit log)",
+    )
+    guide.add_argument(
+        "--reviewer", default=None, help="whose name the approvals record (default: $USER)"
+    )
+
+    score = sub.add_parser(
+        "score",
+        help="score signals against the ICP",
+        epilog=(
+            "examples:\n"
+            "  soe score                           demo signals, 30-day window\n"
+            "  soe score --source s.json --window 14"
+        ),
+        formatter_class=examples,
+    )
+    score.add_argument(
+        "--source", type=Path, default=onboard.SIGNALS, help="JSON fixture of signals"
+    )
     score.add_argument("--window", type=int, default=30, help="freshness window in days")
     score.add_argument("--db", type=Path, default=None, help="audit database path")
 
-    enrich = sub.add_parser("enrich", help="run the enrichment waterfall")
-    enrich.add_argument("--contacts", type=Path, required=True, help="JSON list of contacts")
+    enrich = sub.add_parser(
+        "enrich",
+        help="run the enrichment waterfall",
+        epilog="examples:\n  soe enrich\n  soe enrich --contacts c.json --providers p.json",
+        formatter_class=examples,
+    )
     enrich.add_argument(
-        "--providers", type=Path, required=True, help="JSON fixture of demo providers"
+        "--contacts", type=Path, default=onboard.CONTACTS, help="JSON list of contacts"
+    )
+    enrich.add_argument(
+        "--providers", type=Path, default=onboard.PROVIDERS, help="JSON fixture of demo providers"
     )
     enrich.add_argument("--db", type=Path, default=None, help="audit database path")
-    draft = sub.add_parser("draft", help="draft outreach for qualified fits (offline default)")
-    draft.add_argument("--signals", type=Path, required=True, help="JSON fixture of signals")
-    draft.add_argument("--contacts", type=Path, required=True, help="JSON list of contacts")
+    draft = sub.add_parser(
+        "draft",
+        help="draft outreach for qualified fits (offline default)",
+        epilog=(
+            "examples:\n"
+            "  soe draft\n"
+            "  soe draft --provider anthropic   (needs ANTHROPIC_API_KEY)"
+        ),
+        formatter_class=examples,
+    )
     draft.add_argument(
-        "--providers", type=Path, required=True, help="JSON fixture of demo providers"
+        "--signals", type=Path, default=onboard.SIGNALS, help="JSON fixture of signals"
+    )
+    draft.add_argument(
+        "--contacts", type=Path, default=onboard.CONTACTS, help="JSON list of contacts"
+    )
+    draft.add_argument(
+        "--providers", type=Path, default=onboard.PROVIDERS, help="JSON fixture of demo providers"
     )
     draft.add_argument("--window", type=int, default=30, help="freshness window in days")
-    draft.add_argument("--db", type=Path, default=None, help="audit database path")
+    draft.add_argument("--db", type=Path, default=onboard.DB, help="audit database path")
     draft.add_argument(
         "--provider",
         choices=["offline", "anthropic"],
         default="offline",
         help="drafting provider (default: offline, no key needed)",
     )
-    export = sub.add_parser("export", help="export approved drafts to a sequencer CSV")
-    export.add_argument("--db", type=Path, required=True, help="queue/audit database path")
-    export.add_argument("--out", type=Path, required=True, help="CSV output path")
+    export = sub.add_parser(
+        "export",
+        help="export approved drafts to a sequencer CSV",
+        epilog="examples:\n  soe export\n  soe export --out leads.csv --all",
+        formatter_class=examples,
+    )
+    export.add_argument("--db", type=Path, default=onboard.DB, help="queue/audit database path")
+    export.add_argument("--out", type=Path, default=onboard.OUT, help="CSV output path")
     export.add_argument(
         "--all",
         action="store_true",
         help="re-export drafts already exported (default: only new approvals)",
     )
-    audit = sub.add_parser("audit", help="query the audit trail")
-    audit.add_argument("--db", type=Path, required=True, help="queue/audit database path")
+    audit = sub.add_parser(
+        "audit",
+        help="query the audit trail",
+        epilog="examples:\n  soe audit\n  soe audit --id '<draft-id>'   (one draft's full trace)",
+        formatter_class=examples,
+    )
+    audit.add_argument("--db", type=Path, default=onboard.DB, help="queue/audit database path")
     audit.add_argument(
         "--id", dest="draft_id", default=None, help="trace one draft id (default: all events)"
     )
@@ -68,16 +156,58 @@ def build_parser() -> argparse.ArgumentParser:
     demo.add_argument(
         "--db", type=Path, default=Path("demo.db"), help="queue/audit database path"
     )
-    approve = sub.add_parser("approve", help="review the approval queue")
-    approve.add_argument("--db", type=Path, required=True, help="queue/audit database path")
+    approve = sub.add_parser(
+        "approve",
+        help="review the approval queue (interactive by default)",
+        epilog=(
+            "examples:\n"
+            "  soe approve                 walk the queue, approve/reject each draft\n"
+            "  soe approve --list          just list what is waiting\n"
+            "  soe approve --id '<draft-id>' --decision approved --reviewer sara"
+        ),
+        formatter_class=examples,
+    )
+    approve.add_argument("--db", type=Path, default=onboard.DB, help="queue/audit database path")
     approve.add_argument("--list", action="store_true", help="list pending drafts")
     approve.add_argument("--id", dest="draft_id", default=None, help="draft id to decide")
     approve.add_argument(
         "--decision", choices=["approved", "rejected"], default=None, help="the decision"
     )
-    approve.add_argument("--reviewer", default=None, help="who is deciding (required)")
+    approve.add_argument(
+        "--reviewer", default=None, help="who is deciding (default: $USER)"
+    )
     approve.add_argument("--reason", default=None, help="required when rejecting")
     return parser
+
+
+def _missing_inputs(paths: list[Path]) -> int:
+    """Friendly error when the demo inputs are not on disk yet."""
+    for path in paths:
+        print(f"missing {path}")
+    print()
+    print("The demo data files are not here yet. Either:")
+    print("  soe run        (generates demo data and runs everything)")
+    print("  python -m engine.demo_fixtures   (just generate the data)")
+    return 2
+
+
+def _welcome() -> None:
+    """What `soe` with no command prints: oriented, not a wall of flags."""
+    print("Signal-Outbound Engine - turns buying signals into approved outreach.")
+    print("Offline demo by default: no API keys, no spend, nothing sends.")
+    print()
+    print("Usage: soe <command>")
+    print()
+    print("New here? Pick one:")
+    print("  soe run      the whole pipeline, start to finish, with a summary")
+    print("  soe guide    the same, but explains every step and walks you through")
+    print()
+    print("Then:")
+    print("  soe approve  read each drafted email, approve or reject it")
+    print("  soe export   write approved.csv, ready to upload to Smartlead/Instantly")
+    print()
+    print("Every command works with zero flags on the demo data.")
+    print("All commands and options: soe --help")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -86,14 +216,28 @@ def main(argv: list[str] | None = None) -> int:
     if args.version:
         print(__version__)
         return 0
+    if args.command == "run":
+        from engine.onboard import run_pipeline
+
+        return run_pipeline(args.db, args.out)
+    if args.command == "guide":
+        from engine.onboard import default_reviewer, run_guide
+
+        return run_guide(args.db, args.out, args.yes, args.reviewer or default_reviewer())
     if args.command == "score":
+        if not args.source.exists():
+            return _missing_inputs([args.source])
         result = run_scoring(DemoFileSource(args.source), window_days=args.window)
         print(render_table(result))
         if args.db is not None:
             conn = open_db(args.db)
             audit_run(conn, result)
+        print()
+        print("Next: soe enrich   (find each contact's email)")
         return 0
     if args.command == "enrich":
+        if not args.contacts.exists() or not args.providers.exists():
+            return _missing_inputs([args.contacts, args.providers])
         providers = load_demo_providers(args.providers)
         rows = json.loads(args.contacts.read_text())
         print(f"providers={' -> '.join(pv.name for pv in providers)}")
@@ -128,10 +272,14 @@ def main(argv: list[str] | None = None) -> int:
         if found:
             label += f" (${total / found:.2f} per found email)"
         print(label)
+        print()
+        print("Next: soe draft   (write the outreach emails)")
         return 0
     if args.command == "draft":
         from engine.icp import DRAFT_THRESHOLD
 
+        if not args.signals.exists() or not args.contacts.exists() or not args.providers.exists():
+            return _missing_inputs([args.signals, args.contacts, args.providers])
         run = run_scoring(DemoFileSource(args.signals), window_days=args.window)
         qualified = {f.company: f for f in run.scores if f.points >= DRAFT_THRESHOLD}
         providers = load_demo_providers(args.providers)
@@ -187,10 +335,15 @@ def main(argv: list[str] | None = None) -> int:
             waiting = len(pending(dconn))
             if waiting:
                 print(f"{waiting} draft(s) waiting in the approval queue.")
-                print(f"Review with: soe approve --db {args.db} --list")
+                print(f"Review with: soe approve --db {args.db}")
         return 0
     if args.command == "approve":
         from engine.approve import Approval, Decision, decide, pending
+        from engine.onboard import (
+            NonInteractive,
+            default_reviewer,
+            review_queue,
+        )
 
         aconn = open_db(args.db)
         if args.list:
@@ -200,8 +353,26 @@ def main(argv: list[str] | None = None) -> int:
             for r in rows:
                 print(f"{r['id']}  -> {r['recipient']}  ({r['company']}, fit {r['fit_points']})")
                 print(f"    {r['subject']}")
+            if rows:
+                print()
+                print("Next: soe approve   (walk them one by one)")
             return 0
-        if not (args.draft_id and args.decision and args.reviewer):
+        if args.draft_id is None:
+            # Interactive review: show each draft, ask approve/reject/skip.
+            try:
+                a, r, s = review_queue(aconn, args.reviewer or default_reviewer())
+            except NonInteractive:
+                print("No interactive terminal, so I can't prompt you. Either:")
+                print("  soe approve --list")
+                print("  soe approve --id '<draft-id>' --decision approved --reviewer <you>")
+                return 2
+            if a or r or s:
+                print()
+                print(f"Queue done: {a} approved, {r} rejected, {s} still pending.")
+            if a:
+                print("Next: soe export   (write approved.csv for Smartlead/Instantly)")
+            return 0
+        if not (args.decision and args.reviewer):
             print("approve needs --id, --decision and --reviewer (see --help)")
             return 2
         decide(
@@ -214,6 +385,8 @@ def main(argv: list[str] | None = None) -> int:
             ),
         )
         print(f"{args.draft_id}: {args.decision} by {args.reviewer} - audit-logged")
+        if args.decision == "approved":
+            print("Next: soe export   (when you are done reviewing)")
         return 0
     if args.command == "export":
         from engine.export import export_approved
@@ -222,8 +395,12 @@ def main(argv: list[str] | None = None) -> int:
         count = export_approved(xconn, args.out, include_exported=args.all)
         if count:
             print(f"exported {count} approved draft(s) to {args.out} (Smartlead/Instantly CSV)")
+            print()
+            print(f"Next: upload {args.out} in Smartlead/Instantly (campaign -> Upload CSV).")
+            print("Why anything happened: soe audit")
         else:
             print("no approved drafts waiting for export")
+            print("Approve some first: soe approve")
         return 0
     if args.command == "audit":
         aud_conn = open_db(args.db)
@@ -269,7 +446,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "demo":
         return run_demo(args.data_dir, args.db)
     if args.command is None:
-        parser.print_help()
+        _welcome()
     return 0
 
 

@@ -37,24 +37,36 @@ pip install -e ".[dev]"        # engine + test/lint tooling
 **Verify the install** (about a second):
 
 ```bash
-pytest -q     # 83 tests, all offline
+pytest -q     # 106 tests, all offline
 soe demo      # the whole chain, narrated, on labeled demo data
 ```
 
 If both run clean, everything is set up.
 
-**First run, step by step:**
+**First run - pick one:**
 
 ```bash
-python -m engine.demo_fixtures   # fresh demo data (timestamps relative to now)
-soe score   --source data/demo_signals.json
-soe enrich  --contacts data/demo_contacts.json --providers data/demo_enrichment.json
-soe draft   --signals data/demo_signals.json --contacts data/demo_contacts.json \
-            --providers data/demo_enrichment.json --db run.db
-soe approve --db run.db --list
-soe approve --db run.db --id '<draft-id>' --decision approved --reviewer <you>
-soe export  --db run.db --out approved.csv   # Smartlead/Instantly-ready CSV
-soe audit   --db run.db --id '<draft-id>'    # the full trace for one draft
+soe run      # the whole pipeline in one shot, with a summary at the end
+soe guide    # the same, but explains every step and walks you through the review
+```
+
+Both work with zero flags: they generate the demo data if it is missing,
+run scoring -> enrichment -> drafting, and leave drafts in your review queue.
+`soe guide` additionally pauses at each step, explains what is happening,
+and lets you approve or reject each draft interactively before exporting
+`approved.csv` (Smartlead/Instantly-ready).
+
+**Or drive it step by step** (every command works with zero flags; each one
+tells you the next step):
+
+```bash
+soe          # welcome screen: what this is and where to start
+soe score    # which companies show fresh buying signals
+soe enrich   # find each contact's email (costed waterfall)
+soe draft    # write the emails into your review queue
+soe approve  # read each email, approve or reject it (interactive)
+soe export   # write approved.csv for Smartlead/Instantly
+soe audit    # why anything happened; --id '<draft-id>' for one draft's trace
 ```
 
 **Troubleshooting:**
@@ -76,12 +88,15 @@ soe audit   --db run.db --id '<draft-id>'    # the full trace for one draft
 
 ```bash
 pip install -e .
-python -m engine.demo_fixtures   # refresh demo data (timestamps relative to now)
-soe score   --source data/demo_signals.json
-soe enrich  --contacts data/demo_contacts.json --providers data/demo_enrichment.json
-soe draft   --signals data/demo_signals.json --contacts data/demo_contacts.json \
-            --providers data/demo_enrichment.json --db run.db
-soe approve --db run.db --list
+soe run       # zero to drafted emails in one command
+soe approve   # read each email, approve or reject it
+soe export    # approved.csv, ready to upload to Smartlead/Instantly
+```
+
+Or let it walk you through with explanations at every step:
+
+```bash
+soe guide
 ```
 
 Or watch the whole chain narrated end to end in one command:
@@ -107,6 +122,8 @@ Mona Samir / Acme Corp          mona.samir@acme-demo.example        verified  cl
 Karim Nabil / Initech           (unknown)                           unknown   -             $  0.18
 
 enriched 3/4 for $0.48 ($0.16 per found email)
+
+Next: soe draft   (write the outreach emails)
 ```
 
 These numbers come from the demo run, not real sends. The per-lookup costs
@@ -172,7 +189,7 @@ recorded as ADRs in [ARCHITECTURE.md](ARCHITECTURE.md).
 ## Principles
 
 - **Deterministic core.** Scoring, waterfall order, queue rules: pure functions
-  with tests. CI runs ruff, mypy --strict and pytest (83 tests) on 3.11/3.12.
+  with tests. CI runs ruff, mypy --strict and pytest (106 tests) on 3.11/3.12.
 - **Honesty over coverage.** A field the providers cannot find stays `null`.
   The engine never invents data to fill a gap - see Karim above.
 - **Human gate.** Drafts wait in an approval queue. A named reviewer approves

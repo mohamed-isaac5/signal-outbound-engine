@@ -50,7 +50,7 @@ def test_enrich_command_runs_end_to_end(capsys, demo_dir) -> None:  # type: igno
     assert "(unknown)" in out  # Karim Nabil honestly not found
 
 
-def test_draft_command_runs_end_to_end(capsys, demo_dir) -> None:  # type: ignore[no-untyped-def]
+def test_draft_command_runs_end_to_end(capsys, demo_dir, tmp_path) -> None:  # type: ignore[no-untyped-def]
     signals, contacts, providers = demo_dir
     rc = main(
         [
@@ -58,6 +58,7 @@ def test_draft_command_runs_end_to_end(capsys, demo_dir) -> None:  # type: ignor
             "--signals", str(signals),
             "--contacts", str(contacts),
             "--providers", str(providers),
+            "--db", str(tmp_path / "draft.db"),
         ]
     )
     assert rc == 0
@@ -101,7 +102,7 @@ class _FakeAnthropicClient:
     messages = _FakeMessages()
 
 
-def test_anthropic_summary_is_not_labeled_offline(capsys, demo_dir, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_anthropic_summary_is_not_labeled_offline(capsys, demo_dir, monkeypatch, tmp_path) -> None:  # type: ignore[no-untyped-def]
     """The OFFLINE label must never appear on a real LLM provider's summary."""
     import engine.cli as cli
     from engine.llm import OFFLINE_LABEL, AnthropicProvider
@@ -117,6 +118,7 @@ def test_anthropic_summary_is_not_labeled_offline(capsys, demo_dir, monkeypatch)
             "--contacts", str(contacts),
             "--providers", str(providers),
             "--provider", "anthropic",
+            "--db", str(tmp_path / "anthropic.db"),
         ]
     )
     assert rc == 0
@@ -126,7 +128,7 @@ def test_anthropic_summary_is_not_labeled_offline(capsys, demo_dir, monkeypatch)
     assert OFFLINE_LABEL not in summary[0]
 
 
-def test_offline_summary_carries_the_offline_label(capsys, demo_dir) -> None:  # type: ignore[no-untyped-def]
+def test_offline_summary_carries_the_offline_label(capsys, demo_dir, tmp_path) -> None:  # type: ignore[no-untyped-def]
     from engine.llm import OFFLINE_LABEL
 
     signals, contacts, providers = demo_dir
@@ -136,6 +138,7 @@ def test_offline_summary_carries_the_offline_label(capsys, demo_dir) -> None:  #
             "--signals", str(signals),
             "--contacts", str(contacts),
             "--providers", str(providers),
+            "--db", str(tmp_path / "offline.db"),
         ]
     )
     out = capsys.readouterr().out
@@ -278,10 +281,10 @@ def test_approve_list_prints_pending_rows(capsys, demo_dir, tmp_path) -> None:  
     assert "-> sara.adel@northwind-demo.example" in out
 
 
-def test_approve_without_decision_args_returns_2(capsys, tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_approve_without_args_on_empty_queue_is_a_noop(capsys, tmp_path) -> None:  # type: ignore[no-untyped-def]
     rc = main(["approve", "--db", str(tmp_path / "q.db")])
-    assert rc == 2
-    assert "--id" in capsys.readouterr().out
+    assert rc == 0
+    assert "queue is empty" in capsys.readouterr().out
 
 
 def test_no_command_prints_help(capsys) -> None:  # type: ignore[no-untyped-def]

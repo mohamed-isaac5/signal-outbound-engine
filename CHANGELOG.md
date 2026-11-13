@@ -4,6 +4,32 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-11-13
+
+### Added
+- `soe run`: the whole pipeline in one zero-flag command, narrated in plain
+  language (scoring, enrichment, drafting), ending with the exact next step.
+  Generates the demo data itself when it is missing.
+- `soe guide`: an interactive walkthrough of the same flow - explains each
+  step before running it, pauses for Enter, walks the review draft by draft,
+  exports, and closes with a summary naming the file and how to upload it to
+  Smartlead/Instantly. `--yes` runs it without pauses (approves every draft).
+- Interactive `soe approve` (no flags): read each pending email and answer
+  y/n/skip; rejections ask for a reason in a loop (the audit log keeps it).
+  Without a terminal it exits 2 pointing at the flag form.
+- `soe` with no command prints a welcome screen (what this is, where to
+  start) instead of raw argparse help.
+- Zero-flag defaults on every command (demo data in `data/`, `run.db`,
+  `approved.csv`), so the happy path never needs a flag; flags still override.
+- Next-step hints after every command, and examples in every `--help`.
+- Friendly "missing demo data" error (rc 2) naming the fix: `soe run`.
+
+### Fixed
+- Re-running `soe guide` after a successful one no longer ends with the
+  misleading "no approved drafts" summary; it reports the already-exported
+  file instead (detected via the queue, not the CSV's mere existence - a
+  header-only export would have fooled that).
+
 ## [1.2.0] - 2026-11-13
 
 ### Added
