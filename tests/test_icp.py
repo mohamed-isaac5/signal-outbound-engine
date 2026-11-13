@@ -54,3 +54,9 @@ def test_threshold_boundary() -> None:
 def test_mixed_company_signals_rejected() -> None:
     with pytest.raises(ValueError, match="Acme"):
         score_signals("Acme", [sig("OtherCo", SignalType.HIRING)])
+
+
+def test_threshold_matches_the_published_readme_value() -> None:
+    # README: "A combined fit of 50+ routes the account to drafting." The VALUE
+    # is part of the published formula - pin it like the weights.
+    assert DRAFT_THRESHOLD == 50

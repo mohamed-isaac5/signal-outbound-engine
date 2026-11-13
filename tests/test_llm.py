@@ -129,3 +129,28 @@ def test_prompt_never_claims_a_score_cap() -> None:
     prompt = build_prompt(Contact(name="Sara", company="HotCo", email="s@x.y"), fit)
     assert str(fit.points) in prompt
     assert "/100" not in prompt
+
+
+def test_split_subject_body_is_case_strict() -> None:
+    # The prompt demands exactly "Subject:" - a lowercase reply is malformed.
+    with pytest.raises(ValueError, match="Subject"):
+        split_subject_body("subject: hi\n\nbody")
+
+
+def test_make_client_reports_missing_extra(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import sys
+
+    monkeypatch.setitem(sys.modules, "anthropic", None)
+    with pytest.raises(RuntimeError, match="pip install"):
+        AnthropicProvider()._make_client()
+
+
+def test_make_client_builds_real_client_when_extra_installed(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import sys
+    import types
+
+    fake = types.ModuleType("anthropic")
+    sentinel = object()
+    fake.Anthropic = lambda: sentinel  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "anthropic", fake)
+    assert AnthropicProvider()._make_client() is sentinel

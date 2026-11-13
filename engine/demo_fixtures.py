@@ -74,8 +74,10 @@ def providers() -> dict[str, object]:
     }
 
 
-def write_all(directory: Path = DATA_DIR) -> list[Path]:
+def write_all(directory: Path | None = None) -> list[Path]:
     """Write all three demo fixtures with run-relative timestamps."""
+    if directory is None:
+        directory = DATA_DIR
     directory.mkdir(parents=True, exist_ok=True)
     now = datetime.now(tz=timezone.utc)
     written = []

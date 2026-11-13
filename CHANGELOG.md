@@ -4,6 +4,23 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.3] - 2026-11-13
+
+### Added
+- Test-suite audit (QA round): branch coverage measured at 99% (was 93%) -
+  the only uncovered lines are the `__main__` guards. Mutation testing: 17
+  deliberate code breaks, all caught by the suite.
+- Tests pinning the published threshold VALUE (50), case-strict `Subject:`
+  parsing, the freshness window's inclusive boundary and age-~0 freshness
+  (frozen clock), enrich audit logging, zero-found cost label, approve
+  list/empty/missing-args paths, no-command help, fixture generator `main()`,
+  and both Anthropic `_make_client` paths.
+
+### Fixed
+- `demo_fixtures.write_all` resolves its default output directory at call
+  time instead of binding it at import (the constant is now patchable).
+- Removed unreachable milestone-era fallback line in the CLI.
+
 ## [1.1.2] - 2026-11-13
 
 ### Fixed

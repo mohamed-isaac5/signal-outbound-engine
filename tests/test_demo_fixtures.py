@@ -22,3 +22,13 @@ def test_all_three_files_written(tmp_path: Path) -> None:
         "demo_contacts.json",
         "demo_enrichment.json",
     }
+
+
+def test_main_prints_written_paths(capsys, tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import engine.demo_fixtures as df
+
+    monkeypatch.setattr(df, "DATA_DIR", tmp_path)
+    assert df.main() == 0
+    out = capsys.readouterr().out
+    assert "demo_signals.json" in out
+    assert (tmp_path / "demo_signals.json").exists()

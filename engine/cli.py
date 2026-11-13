@@ -197,8 +197,6 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command is None:
         parser.print_help()
-        return 0
-    print(f"`soe {args.command}` lands in a later milestone - see README roadmap.")
     return 0
 
 

@@ -210,3 +210,85 @@ def test_readme_demo_output_matches_real_enrich_run(capsys, demo_dir) -> None:  
     for line in out.splitlines():
         if line.strip():
             assert line in readme, f"README demo output drifted from real output: {line!r}"
+
+
+def test_enrich_command_writes_audit(capsys, tmp_path, demo_dir) -> None:  # type: ignore[no-untyped-def]
+    import sqlite3
+
+    _, contacts, providers = demo_dir
+    db = tmp_path / "e.db"
+    rc = main(
+        ["enrich", "--contacts", str(contacts), "--providers", str(providers), "--db", str(db)]
+    )
+    assert rc == 0
+    rows = sqlite3.connect(db).execute("SELECT event FROM audit").fetchall()
+    assert len(rows) == 4 and all(r[0] == "enrichment" for r in rows)
+
+
+def test_enrich_zero_found_omits_per_email_cost(capsys, demo_dir) -> None:  # type: ignore[no-untyped-def]
+    import json
+
+    _, contacts, providers = demo_dir
+    empty = providers.with_name("empty_providers.json")
+    empty.write_text(json.dumps({"providers": [{"name": "p", "unit_cost_usd": 0.01, "data": {}}]}))
+    rc = main(["enrich", "--contacts", str(contacts), "--providers", str(empty)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "enriched 0/4" in out
+    assert "per found email" not in out  # no division by zero, no fake precision
+
+
+def test_draft_with_db_and_nothing_pending_prints_no_waiting(capsys, demo_dir) -> None:  # type: ignore[no-untyped-def]
+    import json
+
+    signals, contacts, providers = demo_dir
+    rows = json.loads(contacts.read_text())
+    contacts.write_text(json.dumps([r for r in rows if r["company"] == "Acme Corp"]))  # unqualified
+    rc = main(
+        [
+            "draft",
+            "--signals", str(signals),
+            "--contacts", str(contacts),
+            "--providers", str(providers),
+            "--db", str(contacts.with_name("q.db")),
+        ]
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "0 draft(s) created" in out
+    assert "waiting in the approval queue" not in out
+
+
+def test_approve_list_prints_pending_rows(capsys, demo_dir, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    signals, contacts, providers = demo_dir
+    db = tmp_path / "q.db"
+    main(
+        [
+            "draft",
+            "--signals", str(signals),
+            "--contacts", str(contacts),
+            "--providers", str(providers),
+            "--db", str(db),
+        ]
+    )
+    capsys.readouterr()
+    assert main(["approve", "--db", str(db), "--list"]) == 0
+    out = capsys.readouterr().out
+    assert "Northwind Traders:sara.adel@northwind-demo.example" in out
+    assert "-> sara.adel@northwind-demo.example" in out
+
+
+def test_approve_without_decision_args_returns_2(capsys, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    rc = main(["approve", "--db", str(tmp_path / "q.db")])
+    assert rc == 2
+    assert "--id" in capsys.readouterr().out
+
+
+def test_no_command_prints_help(capsys) -> None:  # type: ignore[no-untyped-def]
+    assert main([]) == 0
+    assert "usage" in capsys.readouterr().out.lower()
+
+
+def test_approve_list_empty_queue_message(capsys, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    assert main(["approve", "--db", str(tmp_path / "fresh.db"), "--list"]) == 0
+    assert "approval queue is empty" in capsys.readouterr().out
