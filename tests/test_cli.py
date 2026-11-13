@@ -292,3 +292,176 @@ def test_no_command_prints_help(capsys) -> None:  # type: ignore[no-untyped-def]
 def test_approve_list_empty_queue_message(capsys, tmp_path) -> None:  # type: ignore[no-untyped-def]
     assert main(["approve", "--db", str(tmp_path / "fresh.db"), "--list"]) == 0
     assert "approval queue is empty" in capsys.readouterr().out
+
+
+def test_demo_runs_the_whole_chain(capsys, demo_dir, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    signals, _, _ = demo_dir
+    data_dir = signals.parent
+    db = tmp_path / "demo.db"
+    rc = main(["demo", "--data-dir", str(data_dir), "--db", str(db)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    for section in ("1/4 SCORING", "2/4 ENRICHMENT", "3/4 DRAFTING", "4/4 THE HUMAN GATE"):
+        assert section in out
+    assert "No message was sent" in out
+    assert "skipped Mona Samir (Acme Corp): below the fit bar" in out
+    assert "skipped Karim Nabil (Initech): below the fit bar" in out
+    import sqlite3
+
+    pending = sqlite3.connect(db).execute("SELECT count(*) FROM drafts WHERE status='pending'")
+    assert pending.fetchone()[0] == 2
+    # the demo is idempotent: a second run updates, never duplicates
+    assert main(["demo", "--data-dir", str(data_dir), "--db", str(db)]) == 0
+    assert (
+        sqlite3.connect(db).execute("SELECT count(*) FROM drafts").fetchone()[0] == 2
+    )
+
+
+def test_demo_missing_fixtures_fails_cleanly(capsys, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    rc = main(["demo", "--data-dir", str(tmp_path), "--db", str(tmp_path / "d.db")])
+    assert rc == 2
+    assert "demo_fixtures" in capsys.readouterr().out
+
+
+def test_audit_empty_log(capsys, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    assert main(["audit", "--db", str(tmp_path / "a.db")]) == 0
+    assert "audit log is empty" in capsys.readouterr().out
+
+
+def test_audit_unknown_draft_id_returns_2(capsys, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    rc = main(["audit", "--db", str(tmp_path / "a.db"), "--id", "nope"])
+    assert rc == 2
+    assert "no draft with id nope" in capsys.readouterr().out
+
+
+def test_audit_traces_one_draft(capsys, demo_dir, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    signals, contacts, providers = demo_dir
+    db = tmp_path / "q.db"
+    main(
+        [
+            "draft",
+            "--signals", str(signals),
+            "--contacts", str(contacts),
+            "--providers", str(providers),
+            "--db", str(db),
+        ]
+    )
+    main(
+        [
+            "approve",
+            "--db", str(db),
+            "--id", "Globex:omar.fathy@globex-demo.example",
+            "--decision", "rejected",
+            "--reviewer", "mohamed",
+            "--reason", "risky email",
+        ]
+    )
+    capsys.readouterr()
+    rc = main(["audit", "--db", str(db), "--id", "Globex:omar.fathy@globex-demo.example"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "status=rejected by=mohamed" in out
+    assert "reason=risky email" in out
+    assert "draft_enqueued" in out and "draft_decision" in out
+    # the other draft's trail must not leak into this trace
+    assert "Northwind" not in out
+
+
+def test_export_without_approved_drafts(capsys, demo_dir, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    signals, contacts, providers = demo_dir
+    db = tmp_path / "q.db"
+    main(
+        [
+            "draft",
+            "--signals", str(signals),
+            "--contacts", str(contacts),
+            "--providers", str(providers),
+            "--db", str(db),
+        ]
+    )
+    capsys.readouterr()
+    rc = main(["export", "--db", str(db), "--out", str(tmp_path / "x.csv")])
+    assert rc == 0
+    assert "no approved drafts waiting" in capsys.readouterr().out
+
+
+def test_export_success_message(capsys, demo_dir, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    signals, contacts, providers = demo_dir
+    db = tmp_path / "q.db"
+    main(
+        [
+            "draft",
+            "--signals", str(signals),
+            "--contacts", str(contacts),
+            "--providers", str(providers),
+            "--db", str(db),
+        ]
+    )
+    main(
+        [
+            "approve",
+            "--db", str(db),
+            "--id", "Globex:omar.fathy@globex-demo.example",
+            "--decision", "approved",
+            "--reviewer", "mohamed",
+        ]
+    )
+    capsys.readouterr()
+    rc = main(["export", "--db", str(db), "--out", str(tmp_path / "x.csv")])
+    assert rc == 0
+    assert "exported 1 approved draft(s)" in capsys.readouterr().out
+
+
+def test_audit_lists_events(capsys, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from engine.store import log_event, open_db
+
+    db = tmp_path / "a.db"
+    conn = open_db(db)
+    log_event(conn, "scoring_run", "source=demo window=30d: Acme=55")
+    assert main(["audit", "--db", str(db)]) == 0
+    out = capsys.readouterr().out
+    assert "scoring_run" in out and "Acme=55" in out
+
+
+def test_audit_approved_without_reason_has_no_reason_line(capsys, demo_dir, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    signals, contacts, providers = demo_dir
+    db = tmp_path / "q.db"
+    main(
+        [
+            "draft",
+            "--signals", str(signals),
+            "--contacts", str(contacts),
+            "--providers", str(providers),
+            "--db", str(db),
+        ]
+    )
+    main(
+        [
+            "approve",
+            "--db", str(db),
+            "--id", "Globex:omar.fathy@globex-demo.example",
+            "--decision", "approved",
+            "--reviewer", "mohamed",
+        ]
+    )
+    capsys.readouterr()
+    assert main(["audit", "--db", str(db), "--id", "Globex:omar.fathy@globex-demo.example"]) == 0
+    out = capsys.readouterr().out
+    assert "status=approved by=mohamed" in out
+    assert "  reason=" not in out
+
+
+def test_demo_skips_qualified_contact_without_email(capsys, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    import json
+
+    from engine.demo_fixtures import write_all
+
+    write_all(tmp_path)
+    providers = tmp_path / "demo_enrichment.json"
+    providers.write_text(
+        json.dumps({"providers": [{"name": "p", "unit_cost_usd": 0.01, "data": {}}]})
+    )
+    rc = main(["demo", "--data-dir", str(tmp_path), "--db", str(tmp_path / "d.db")])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "skipped Sara Adel (Northwind Traders): no email found" in out

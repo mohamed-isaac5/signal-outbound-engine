@@ -10,6 +10,7 @@ content; a decided draft is never touched.
 
 from __future__ import annotations
 
+import contextlib
 import sqlite3
 from dataclasses import dataclass
 from enum import Enum
@@ -40,6 +41,7 @@ QUEUE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS drafts (
     id TEXT PRIMARY KEY,
     recipient TEXT NOT NULL,
+    recipient_name TEXT,
     company TEXT NOT NULL,
     subject TEXT NOT NULL,
     body TEXT NOT NULL,
@@ -48,13 +50,24 @@ CREATE TABLE IF NOT EXISTS drafts (
     status TEXT NOT NULL DEFAULT 'pending',
     reviewer TEXT,
     reason TEXT,
-    decided_at TEXT
+    decided_at TEXT,
+    exported_at TEXT
 );
 """
+
+# Columns added after the first schema version, for databases created before
+# they existed. SQLite has no IF NOT EXISTS for columns, so probe by trying.
+_MIGRATIONS = (
+    "ALTER TABLE drafts ADD COLUMN recipient_name TEXT",
+    "ALTER TABLE drafts ADD COLUMN exported_at TEXT",
+)
 
 
 def ensure_queue(conn: sqlite3.Connection) -> None:
     conn.executescript(QUEUE_SCHEMA)
+    for migration in _MIGRATIONS:
+        with contextlib.suppress(sqlite3.OperationalError):  # column already present
+            conn.execute(migration)
     conn.commit()
 
 
@@ -77,11 +90,13 @@ def enqueue(conn: sqlite3.Connection, draft_id: str, draft: Draft) -> str:
     if row is None:
         outcome = "enqueued"
         conn.execute(
-            "INSERT INTO drafts (id, recipient, company, subject, body, fit_points, provider)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO drafts"
+            " (id, recipient, recipient_name, company, subject, body, fit_points, provider)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 draft_id,
                 draft.contact.email or "(unknown)",
+                draft.contact.name,
                 draft.contact.company,
                 draft.subject,
                 draft.body,
@@ -92,8 +107,10 @@ def enqueue(conn: sqlite3.Connection, draft_id: str, draft: Draft) -> str:
     else:
         outcome = "updated"
         conn.execute(
-            "UPDATE drafts SET subject = ?, body = ?, fit_points = ?, provider = ? WHERE id = ?",
-            (draft.subject, draft.body, draft.fit.points, draft.provider, draft_id),
+            "UPDATE drafts SET recipient_name = ?, subject = ?, body = ?, fit_points = ?,"
+            " provider = ? WHERE id = ?",
+            (draft.contact.name, draft.subject, draft.body, draft.fit.points, draft.provider,
+             draft_id),
         )
     _audit_tx(conn, "draft_enqueued", f"id={draft_id} to={draft.contact.email} ({outcome})")
     conn.commit()

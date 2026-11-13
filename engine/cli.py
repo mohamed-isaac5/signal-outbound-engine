@@ -48,6 +48,26 @@ def build_parser() -> argparse.ArgumentParser:
         default="offline",
         help="drafting provider (default: offline, no key needed)",
     )
+    export = sub.add_parser("export", help="export approved drafts to a sequencer CSV")
+    export.add_argument("--db", type=Path, required=True, help="queue/audit database path")
+    export.add_argument("--out", type=Path, required=True, help="CSV output path")
+    export.add_argument(
+        "--all",
+        action="store_true",
+        help="re-export drafts already exported (default: only new approvals)",
+    )
+    audit = sub.add_parser("audit", help="query the audit trail")
+    audit.add_argument("--db", type=Path, required=True, help="queue/audit database path")
+    audit.add_argument(
+        "--id", dest="draft_id", default=None, help="trace one draft id (default: all events)"
+    )
+    demo = sub.add_parser("demo", help="run the whole chain offline and narrate each step")
+    demo.add_argument(
+        "--data-dir", type=Path, default=Path("data"), help="directory with demo_*.json fixtures"
+    )
+    demo.add_argument(
+        "--db", type=Path, default=Path("demo.db"), help="queue/audit database path"
+    )
     approve = sub.add_parser("approve", help="review the approval queue")
     approve.add_argument("--db", type=Path, required=True, help="queue/audit database path")
     approve.add_argument("--list", action="store_true", help="list pending drafts")
@@ -195,8 +215,125 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(f"{args.draft_id}: {args.decision} by {args.reviewer} - audit-logged")
         return 0
+    if args.command == "export":
+        from engine.export import export_approved
+
+        xconn = open_db(args.db)
+        count = export_approved(xconn, args.out, include_exported=args.all)
+        if count:
+            print(f"exported {count} approved draft(s) to {args.out} (Smartlead/Instantly CSV)")
+        else:
+            print("no approved drafts waiting for export")
+        return 0
+    if args.command == "audit":
+        aud_conn = open_db(args.db)
+        if args.draft_id is None:
+            rows = aud_conn.execute(
+                "SELECT created_at, event, detail FROM audit ORDER BY id"
+            ).fetchall()
+            if not rows:
+                print("audit log is empty")
+            for created_at, event, detail in rows:
+                print(f"{created_at}  {event:<16} {detail}")
+            return 0
+        from engine.approve import ensure_queue
+
+        ensure_queue(aud_conn)
+        row = aud_conn.execute(
+            "SELECT status, reviewer, reason, decided_at, fit_points, provider, recipient"
+            " FROM drafts WHERE id = ?",
+            (args.draft_id,),
+        ).fetchone()
+        if row is None:
+            print(f"no draft with id {args.draft_id}")
+            return 2
+        status, reviewer, reason, decided_at, fit_points, provider, recipient = row
+        print(f"draft {args.draft_id}")
+        print(f"  to={recipient} fit={fit_points} provider={provider}")
+        print(f"  status={status}"
+              + (f" by={reviewer} at={decided_at}" if reviewer else ""))
+        if reason:
+            print(f"  reason={reason}")
+        # LIKE metacharacters in ids/emails are data, not patterns.
+        def esc(s: str) -> str:
+            return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        events = aud_conn.execute(
+            "SELECT created_at, event, detail FROM audit"
+            " WHERE detail LIKE ? ESCAPE '\\' OR detail LIKE ? ESCAPE '\\' ORDER BY id",
+            (f"id={esc(args.draft_id)}%", f"%to={esc(recipient)}%"),
+        ).fetchall()
+        print("  trail:")
+        for created_at, event, detail in events:
+            print(f"    {created_at}  {event}: {detail}")
+        return 0
+    if args.command == "demo":
+        return run_demo(args.data_dir, args.db)
     if args.command is None:
         parser.print_help()
+    return 0
+
+
+def run_demo(data_dir: Path, db: Path) -> int:
+    """One command, whole chain, narrated. Offline, no keys, no sends."""
+    from engine.approve import enqueue, pending
+
+    signals_path = data_dir / "demo_signals.json"
+    contacts_path = data_dir / "demo_contacts.json"
+    providers_path = data_dir / "demo_enrichment.json"
+    for path in (signals_path, contacts_path, providers_path):
+        if not path.exists():
+            print(f"missing {path} - run: python -m engine.demo_fixtures")
+            return 2
+
+    print("SIGNAL-OUTBOUND-ENGINE DEMO - offline, labeled demo data, nothing sends")
+    print()
+    print("== 1/4 SCORING - fresh buying signals against the published ICP formula")
+    run = run_scoring(DemoFileSource(signals_path))
+    print(render_table(run))
+    qualified = {f.company: f for f in run.scores if f.qualifies}
+    print()
+    print(f"-> {len(qualified)} account(s) over the 50-point bar route to drafting")
+    print()
+    print("== 2/4 ENRICHMENT - costed waterfall, unknown stays unknown")
+    providers = load_demo_providers(providers_path)
+    rows = json.loads(contacts_path.read_text())
+    print(f"providers={' -> '.join(pv.name for pv in providers)}")
+    contacts = [Contact(name=r["name"], company=r["company"], title=r.get("title")) for r in rows]
+    enriched = {c.company: run_waterfall(c, providers) for c in contacts}
+    for company, eresult in enriched.items():
+        email = eresult.contact.email or "(unknown - no provider found an email)"
+        print(f"  {eresult.contact.name} / {company}: {email} (${eresult.cost_usd:.2f})")
+    total = sum(r.cost_usd for r in enriched.values())
+    found = sum(1 for r in enriched.values() if r.contact.email is not None)
+    print(f"-> {found}/{len(rows)} emails found for ${total:.2f} - every lookup billed")
+    print()
+    print("== 3/4 DRAFTING - offline provider, every draft labeled")
+    conn = open_db(db)
+    made = 0
+    for company, eresult in enriched.items():
+        fit = qualified.get(company)
+        if fit is None:
+            print(f"  skipped {eresult.contact.name} ({company}): below the fit bar")
+            continue
+        if eresult.contact.email is None:
+            print(f"  skipped {eresult.contact.name} ({company}): no email found")
+            continue
+        drafter = OfflineProvider()
+        d = drafter.draft(eresult.contact, fit)
+        outcome = enqueue(conn, f"{d.contact.company}:{d.contact.email}", d)
+        made += 1
+        print(f"  drafted for {d.contact.email} (fit {d.fit.points}) [{outcome}]")
+    print(f"-> {made} draft(s), each labeled: {OFFLINE_LABEL}")
+    print()
+    print("== 4/4 THE HUMAN GATE - nothing sends without a named approver")
+    rows_pending = pending(conn)
+    for r in rows_pending:
+        print(f"  pending: {r['id']} (fit {r['fit_points']})")
+    print()
+    print("No message was sent. The approval queue is the boundary.")
+    print(f"Next: soe approve --db {db} --list   (then approve or reject each)")
+    print(f"Then: soe export  --db {db} --out approved.csv   (to Smartlead/Instantly)")
+    print(f"Why:  soe audit   --db {db} --id '<draft-id>'   (full trace)")
     return 0
 
 

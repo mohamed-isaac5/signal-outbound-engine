@@ -13,11 +13,64 @@ Outbound teams stitch this together by hand across five tools. This engine is
 the whole loop in one deterministic, testable core:
 
 ```
-signals ──> ICP score ──> enrichment waterfall ──> draft ──> approval queue ──> send
- (demo)     (published      (verified/risky/       (offline   (approve/reject,   (never
-             formula)        unknown, costed)       default)   audit-logged)      without
-                                                                                 approval)
+signals ──> ICP score ──> enrichment waterfall ──> draft ──> approval queue ──> export
+ (demo)     (published      (verified/risky/       (offline   (approve/reject,   (Smartlead/
+             formula)        unknown, costed)       default)   audit-logged)      Instantly
+                                                                                 CSV)
 ```
+
+## Setup
+
+**Prerequisites:** Python **3.11 or newer** and git. Nothing else - no API
+keys, no accounts, no services.
+
+```bash
+git clone https://github.com/mohamed-isaac5/signal-outbound-engine.git
+cd signal-outbound-engine
+python3 -m venv .venv && source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install -e ".[dev]"        # engine + test/lint tooling
+# optional, for the real Anthropic drafting adapter:
+# pip install -e ".[anthropic]"
+```
+
+**Verify the install** (about a second):
+
+```bash
+pytest -q     # 83 tests, all offline
+soe demo      # the whole chain, narrated, on labeled demo data
+```
+
+If both run clean, everything is set up.
+
+**First run, step by step:**
+
+```bash
+python -m engine.demo_fixtures   # fresh demo data (timestamps relative to now)
+soe score   --source data/demo_signals.json
+soe enrich  --contacts data/demo_contacts.json --providers data/demo_enrichment.json
+soe draft   --signals data/demo_signals.json --contacts data/demo_contacts.json \
+            --providers data/demo_enrichment.json --db run.db
+soe approve --db run.db --list
+soe approve --db run.db --id '<draft-id>' --decision approved --reviewer <you>
+soe export  --db run.db --out approved.csv   # Smartlead/Instantly-ready CSV
+soe audit   --db run.db --id '<draft-id>'    # the full trace for one draft
+```
+
+**Troubleshooting:**
+
+- `ERROR: Package ... requires a different Python: 3.10.x not in '>=3.11'` -
+  your Python is too old. Install 3.11+ (pyenv, uv, or your package manager)
+  and recreate the venv.
+- `soe: command not found` - the venv is not activated:
+  `source .venv/bin/activate`.
+- `RuntimeError: ANTHROPIC_API_KEY is not set` - expected if you passed
+  `--provider anthropic` without a key. The default provider needs no key;
+  drop the flag, or export a key.
+- Every account scores 0 / no fresh signals - the demo data predates your
+  clone: run `python -m engine.demo_fixtures` to regenerate it.
+- `sqlite3.OperationalError: database is locked` - another process has the
+  run database open. One process at a time per `.db` file.
 
 ## Quickstart (offline, no keys, no spend)
 
@@ -29,6 +82,12 @@ soe enrich  --contacts data/demo_contacts.json --providers data/demo_enrichment.
 soe draft   --signals data/demo_signals.json --contacts data/demo_contacts.json \
             --providers data/demo_enrichment.json --db run.db
 soe approve --db run.db --list
+```
+
+Or watch the whole chain narrated end to end in one command:
+
+```bash
+soe demo
 ```
 
 Everything runs offline against labeled demo fixtures (fictional companies and
@@ -89,10 +148,31 @@ soe draft --signals data/demo_signals.json --contacts data/demo_contacts.json \
 The exact prompt is inspectable (`engine.llm.build_prompt`). Without a key the
 adapter fails loudly, never silently falls back.
 
+## After approval: export and trace
+
+Approved drafts - and only approved drafts - export to a CSV shaped for
+Smartlead/Instantly import. Each export is audit-logged and exports only newly
+approved work (`--all` re-exports everything):
+
+```bash
+soe export --db run.db --out approved.csv
+```
+
+Every draft carries its full trace: the signals and score that produced it,
+who approved or rejected it, when and why.
+
+```bash
+soe audit --db run.db                                    # every event
+soe audit --db run.db --id 'Northwind Traders:sara.adel@northwind-demo.example'
+```
+
+The design decisions (why offline-first, why the human gate, why SQLite) are
+recorded as ADRs in [ARCHITECTURE.md](ARCHITECTURE.md).
+
 ## Principles
 
 - **Deterministic core.** Scoring, waterfall order, queue rules: pure functions
-  with tests. CI runs ruff, mypy --strict and pytest (67 tests) on 3.11/3.12.
+  with tests. CI runs ruff, mypy --strict and pytest (83 tests) on 3.11/3.12.
 - **Honesty over coverage.** A field the providers cannot find stays `null`.
   The engine never invents data to fill a gap - see Karim above.
 - **Human gate.** Drafts wait in an approval queue. A named reviewer approves
@@ -105,7 +185,7 @@ adapter fails loudly, never silently falls back.
   live connectors (job boards, funding news, Apollo/Clay) implement the same
   `SignalSource` / `EnrichmentProvider` protocols.
 - No sending integration yet by design: the approval queue is the boundary.
-- Next: live connectors, n8n/MCP exposure, sequence export.
+- Next: live connectors, n8n/MCP exposure.
 
 - [x] M0 - scaffold, contracts, tests, CI
 - [x] M1 - signal connectors + scoring runs
@@ -113,6 +193,8 @@ adapter fails loudly, never silently falls back.
 - [x] M3 - drafting (offline provider default; Anthropic adapter ready)
 - [x] M4 - approval queue + audit trail
 - [x] M5 - this case study
+- [x] M6 - sequencer export (Smartlead/Instantly CSV), one-command `soe demo`,
+  audit-trail query (`soe audit`), architecture ADRs
 
 ## License
 

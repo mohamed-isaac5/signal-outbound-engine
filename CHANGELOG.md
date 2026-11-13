@@ -4,6 +4,21 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-11-13
+
+### Added
+- `soe export`: approved drafts - and only approved drafts - export to a
+  Smartlead/Instantly-shaped CSV (email, first/last name, company, subject,
+  body). Each export marks its drafts (`--all` re-exports) and is
+  audit-logged. The queue schema gains `recipient_name` and `exported_at`
+  with guarded migrations for existing databases.
+- `soe demo`: one command runs the whole chain offline and narrates each
+  stage - scoring, enrichment, drafting, and the human gate.
+- `soe audit`: query the audit trail; `--id` traces one draft from creation
+  to decision with its score, provider, reviewer and reason.
+- ARCHITECTURE.md: module map and ADRs (offline-first, human gate, SQLite,
+  protocols over frameworks, published scoring formula).
+
 ## [1.1.3] - 2026-11-13
 
 ### Added
